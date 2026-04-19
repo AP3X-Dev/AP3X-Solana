@@ -1,0 +1,78 @@
+[
+  {
+    "label": "empty",
+    "dataBase64": "AQAAAP//////////AAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "expected": {
+      "deactivationSlot": "18446744073709551615",
+      "lastExtendedSlot": "0",
+      "lastExtendedSlotStartIndex": 0,
+      "authority": "11111111111111111111111111111111",
+      "addresses": []
+    }
+  },
+  {
+    "label": "single-address",
+    "dataBase64": "AQAAAP//////////OTAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqQ==",
+    "expected": {
+      "deactivationSlot": "18446744073709551615",
+      "lastExtendedSlot": "12345",
+      "lastExtendedSlotStartIndex": 0,
+      "authority": "11111111111111111111111111111111",
+      "addresses": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ]
+    }
+  },
+  {
+    "label": "five-common-programs",
+    "dataBase64": "AQAAAP//////////AMLrCwAAAAACAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqYyXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZC3BlsePRfEU4nVJ/awTDzVi4bHMaoP21SbbRvAP4KUYGm4hX/quBhPtof2NGGMA12sQ53BrrO1WYoPAAAAAAAcb6evO+2606PWXzaqvJdDGxu+TC0vbg5HymAgNFL11h",
+    "expected": {
+      "deactivationSlot": "18446744073709551615",
+      "lastExtendedSlot": "200000000",
+      "lastExtendedSlotStartIndex": 2,
+      "authority": "11111111111111111111111111111111",
+      "addresses": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+        "So11111111111111111111111111111111111111112",
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+      ]
+    }
+  },
+  {
+    "label": "frozen-no-authority",
+    "dataBase64": "AQAAAP//////////MgAAAAAAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8Aqcb6evO+2606PWXzaqvJdDGxu+TC0vbg5HymAgNFL11hzgEOYK/tsicXvWMZL1QUWj+WWjO7gtLHAp6yzh4ggmQGm4hX/quBhPtof2NGGMA12sQ53BrrO1WYoPAAAAAAAQ==",
+    "expected": {
+      "deactivationSlot": "18446744073709551615",
+      "lastExtendedSlot": "50",
+      "lastExtendedSlotStartIndex": 3,
+      "authority": null,
+      "addresses": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "So11111111111111111111111111111111111111112"
+      ]
+    }
+  },
+  {
+    "label": "authority-system-program",
+    "dataBase64": "AQAAAEBCDwAAAAAAoLsNAAAAAAAEAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABVuD2k2Zaz0TbFWi/F1uqUYnLl/XS/ztlXSu2/W0YsAbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpC3BlsePRfEU4nVJ/awTDzVi4bHMaoP21SbbRvAP4KUaMlyWPTiSJ8bs9ECkUjg2DC1oTmdr/EIQEjnvY2+n4WQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABxvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWHOAQ5gr+2yJxe9YxkvVBRaP5ZaM7uC0scCnrLOHiCCZA==",
+    "expected": {
+      "deactivationSlot": "1000000",
+      "lastExtendedSlot": "900000",
+      "lastExtendedSlotStartIndex": 4,
+      "authority": "11111111111111111111111111111111",
+      "addresses": [
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "So11111111111111111111111111111111111111112",
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+      ]
+    }
+  }
+]
