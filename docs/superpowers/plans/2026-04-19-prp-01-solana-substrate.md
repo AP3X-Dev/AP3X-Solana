@@ -76,7 +76,7 @@ ap3x-solana/
   "name": "ap3x-solana",
   "private": true,
   "version": "0.0.0",
-  "packageManager": "pnpm@9.12.0",
+  "packageManager": "pnpm@10.14.0",
   "engines": { "node": ">=20.0.0" },
   "workspaces": ["packages/*", "examples/*"],
   "scripts": {
@@ -1069,7 +1069,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
+        with: { version: 10 }
       - uses: actions/setup-node@v4
         with: { node-version: ${{ matrix.node }}, cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
