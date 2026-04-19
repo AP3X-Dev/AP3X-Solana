@@ -65,6 +65,21 @@ importers:
 
   packages/solana-core: {}
 
+  packages/solana-tx:
+    dependencies:
+      '@ap3x/solana-connectivity':
+        specifier: workspace:*
+        version: link:../solana-connectivity
+      '@ap3x/solana-core':
+        specifier: workspace:*
+        version: link:../solana-core
+      '@noble/ed25519':
+        specifier: ^2.1.0
+        version: 2.3.0
+      '@noble/hashes':
+        specifier: ^2.2.0
+        version: 2.2.0
+
   packages/solana-vault:
     dependencies:
       '@ap3x/solana-core':

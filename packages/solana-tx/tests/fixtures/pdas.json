@@ -1,0 +1,353 @@
+[
+  {
+    "label": "ata-sample-owner-a-wsol",
+    "seeds": [
+      {
+        "type": "pubkey-base58",
+        "value": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "So11111111111111111111111111111111111111112"
+      }
+    ],
+    "programId": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+    "expectedAddress": "Fr37Gkri7undsm6MiQADnMounZ48VngX8jmH49aTd1bg",
+    "expectedBump": 253
+  },
+  {
+    "label": "ata-sample-owner-a-usdc",
+    "seeds": [
+      {
+        "type": "pubkey-base58",
+        "value": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+      }
+    ],
+    "programId": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+    "expectedAddress": "ALZv1FW3Bc5uRtci2UHnYS34DEWCmfkN5btEYDKms9yU",
+    "expectedBump": 254
+  },
+  {
+    "label": "ata-sample-owner-a-usdt",
+    "seeds": [
+      {
+        "type": "pubkey-base58",
+        "value": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+      }
+    ],
+    "programId": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+    "expectedAddress": "FUB3AwADyvY5DtmP5dC25NB8BTdMqBmMggFauWwFkZJS",
+    "expectedBump": 254
+  },
+  {
+    "label": "ata-sample-owner-b-wsol",
+    "seeds": [
+      {
+        "type": "pubkey-base58",
+        "value": "So11111111111111111111111111111111111111112"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "So11111111111111111111111111111111111111112"
+      }
+    ],
+    "programId": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+    "expectedAddress": "5o9nTwSiofKC5DnLiv2gsjPYmGNgh2hAjieyAzyUuwi2",
+    "expectedBump": 251
+  },
+  {
+    "label": "ata-sample-owner-b-usdc-token2022",
+    "seeds": [
+      {
+        "type": "pubkey-base58",
+        "value": "So11111111111111111111111111111111111111112"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+      }
+    ],
+    "programId": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+    "expectedAddress": "taYqGwEHpcdcznSxzJVnctU3PV2XFzZq8zvyeK2KG9P",
+    "expectedBump": 252
+  },
+  {
+    "label": "ata-system-program-wsol",
+    "seeds": [
+      {
+        "type": "pubkey-base58",
+        "value": "11111111111111111111111111111111"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "So11111111111111111111111111111111111111112"
+      }
+    ],
+    "programId": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+    "expectedAddress": "aqxoAhCwpy3oB1BpNw9hL1HdLYLgPpbPjzxDrrQj3Fs",
+    "expectedBump": 254
+  },
+  {
+    "label": "metaplex-metadata-wsol",
+    "seeds": [
+      {
+        "type": "utf8",
+        "value": "metadata"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "So11111111111111111111111111111111111111112"
+      }
+    ],
+    "programId": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+    "expectedAddress": "6dM4TqWyWJsbx7obrdLcviBkTafD5E8av61zfU6jq57X",
+    "expectedBump": 255
+  },
+  {
+    "label": "metaplex-metadata-usdc",
+    "seeds": [
+      {
+        "type": "utf8",
+        "value": "metadata"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+      }
+    ],
+    "programId": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+    "expectedAddress": "5x38Kp4hvdomTCnCrAny4UtMUt5rQBdB6px2K1Ui45Wq",
+    "expectedBump": 255
+  },
+  {
+    "label": "metaplex-master-edition-wsol",
+    "seeds": [
+      {
+        "type": "utf8",
+        "value": "metadata"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "So11111111111111111111111111111111111111112"
+      },
+      {
+        "type": "utf8",
+        "value": "edition"
+      }
+    ],
+    "programId": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+    "expectedAddress": "7r1W5yu5i7ev1wPNGsNuRLcdKW1sCy2x4rwyQkdi9ew2",
+    "expectedBump": 254
+  },
+  {
+    "label": "metaplex-metadata-pumpfun-sample",
+    "seeds": [
+      {
+        "type": "utf8",
+        "value": "metadata"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+      }
+    ],
+    "programId": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+    "expectedAddress": "7ATSjJa1Z1WZZhskuAT6vSHEuZojkbokYcE8rmUKLWN3",
+    "expectedBump": 255
+  },
+  {
+    "label": "pumpfun-bonding-curve-usdc",
+    "seeds": [
+      {
+        "type": "utf8",
+        "value": "bonding-curve"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+      }
+    ],
+    "programId": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+    "expectedAddress": "8Rr2Qo9ch94zRZxojHfg7Xeq8DfAp9mfNaLZnQScnpbA",
+    "expectedBump": 253
+  },
+  {
+    "label": "pumpfun-bonding-curve-wsol",
+    "seeds": [
+      {
+        "type": "utf8",
+        "value": "bonding-curve"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "So11111111111111111111111111111111111111112"
+      }
+    ],
+    "programId": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+    "expectedAddress": "6PiyjiAPkp2KdZtqkyQYzVsD1Prv7t8v4TaYd8ip4YFd",
+    "expectedBump": 253
+  },
+  {
+    "label": "pumpfun-bonding-curve-usdt",
+    "seeds": [
+      {
+        "type": "utf8",
+        "value": "bonding-curve"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+      }
+    ],
+    "programId": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+    "expectedAddress": "D4VHYh9ZBbG7cgZfAdWQZ4sUjM7edqH4uQeGrxMUmKcR",
+    "expectedBump": 255
+  },
+  {
+    "label": "pumpfun-global",
+    "seeds": [
+      {
+        "type": "utf8",
+        "value": "global"
+      }
+    ],
+    "programId": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+    "expectedAddress": "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf",
+    "expectedBump": 255
+  },
+  {
+    "label": "pumpfun-fee-recipient",
+    "seeds": [
+      {
+        "type": "utf8",
+        "value": "fee_recipient"
+      },
+      {
+        "type": "pubkey-base58",
+        "value": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+      }
+    ],
+    "programId": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+    "expectedAddress": "HHACNeKFNQWdtGKEFyRMVtn9yicaFXMepT2ztgK84FY8",
+    "expectedBump": 255
+  },
+  {
+    "label": "empty-seed-list",
+    "seeds": [],
+    "programId": "11111111111111111111111111111111",
+    "expectedAddress": "Cu7NwqCXSmsR5vgGA3Vw9uYVViPi3kQvkbKByVQ8nPY9",
+    "expectedBump": 255
+  },
+  {
+    "label": "single-byte-zero",
+    "seeds": [
+      {
+        "type": "hex",
+        "value": "00"
+      }
+    ],
+    "programId": "11111111111111111111111111111111",
+    "expectedAddress": "5JHiRKxexoqstAYCAMNmTa5DMvsgbD3fVMtipT5gXh3s",
+    "expectedBump": 254
+  },
+  {
+    "label": "single-byte-ff",
+    "seeds": [
+      {
+        "type": "hex",
+        "value": "ff"
+      }
+    ],
+    "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "expectedAddress": "2waeSPDqCEEJwN64K3MBdVBpTvVrKsvwHiNitmHD2WmR",
+    "expectedBump": 255
+  },
+  {
+    "label": "utf8-user",
+    "seeds": [
+      {
+        "type": "utf8",
+        "value": "user"
+      }
+    ],
+    "programId": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+    "expectedAddress": "GKtK2J6Chp9zqAyQb8sbfBdhYjHxpPtHq8SomKzz8YBz",
+    "expectedBump": 250
+  },
+  {
+    "label": "utf8-user-with-u64",
+    "seeds": [
+      {
+        "type": "utf8",
+        "value": "user"
+      },
+      {
+        "type": "hex",
+        "value": "2a00000000000000"
+      }
+    ],
+    "programId": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+    "expectedAddress": "CNum7t6iNcUHkXxxv6K9zgNhJFXgszg2EoNWE5ZPzNcm",
+    "expectedBump": 253
+  },
+  {
+    "label": "32-byte-max-seed",
+    "seeds": [
+      {
+        "type": "hex",
+        "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ],
+    "programId": "11111111111111111111111111111111",
+    "expectedAddress": "8PftkiiMKLtgmNw8vtxkqPbbJHwofkJEjL1993DzbrrV",
+    "expectedBump": 254
+  }
+]
