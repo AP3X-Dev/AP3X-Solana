@@ -1,0 +1,31 @@
+{
+  "name": "ap3x-solana",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.14.0",
+  "engines": { "node": ">=20.0.0" },
+  "workspaces": ["packages/*", "examples/*"],
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:integration": "turbo run test:integration",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "diag": "pnpm --filter @ap3x/solana-connectivity diag",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "turbo run build && changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.7",
+    "@types/node": "^20.14.0",
+    "eslint": "^9.10.0",
+    "eslint-plugin-boundaries": "^4.2.2",
+    "prettier": "^3.3.3",
+    "tsup": "^8.3.0",
+    "turbo": "^2.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "@vitest/coverage-v8": "^2.1.0"
+  }
+}
