@@ -20,3 +20,11 @@ export {
   quantile,
 } from './priority-fee';
 export type { FeeTier, PriorityFeeEstimatorOptions } from './priority-fee';
+
+export {
+  simulateAndBudget,
+  FALLBACK_UNITS_CONSUMED,
+  FALLBACK_UNITS_LIMIT,
+  BUDGET_HEADROOM,
+} from './compute-budget';
+export type { SimulateResult, RpcPoolLike } from './compute-budget';
