@@ -28,3 +28,15 @@ export {
   BUDGET_HEADROOM,
 } from './compute-budget';
 export type { SimulateResult, RpcPoolLike } from './compute-budget';
+
+export { assemble, TransactionError } from './transaction-assembler';
+export type {
+  AccountMeta,
+  AssemblerAlt,
+  AssemblerOptions,
+  AssemblerResult,
+  Instruction,
+  Signer,
+  TransactionErrorCode,
+  TransactionErrorMeta,
+} from './transaction-assembler';
