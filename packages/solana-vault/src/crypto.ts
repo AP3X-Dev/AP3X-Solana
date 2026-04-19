@@ -49,6 +49,11 @@ export async function deriveKey(
   memlimit: number,
 ): Promise<Uint8Array> {
   await ready();
+  if (salt.length !== sodium.crypto_pwhash_SALTBYTES) {
+    throw new Error(
+      `vault: salt must be ${sodium.crypto_pwhash_SALTBYTES} bytes, got ${salt.length}`,
+    );
+  }
   return sodium.crypto_pwhash(
     32,
     passphrase,
@@ -73,6 +78,11 @@ export async function encrypt(
   plaintext: Uint8Array,
 ): Promise<EncryptedPayload> {
   await ready();
+  if (key.length !== sodium.crypto_secretbox_KEYBYTES) {
+    throw new Error(
+      `vault: key must be ${sodium.crypto_secretbox_KEYBYTES} bytes, got ${key.length}`,
+    );
+  }
   const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
   const ciphertext = sodium.crypto_secretbox_easy(plaintext, nonce, key);
   return { nonce, ciphertext };
@@ -92,5 +102,15 @@ export async function decrypt(
   ciphertext: Uint8Array,
 ): Promise<Uint8Array> {
   await ready();
+  if (key.length !== sodium.crypto_secretbox_KEYBYTES) {
+    throw new Error(
+      `vault: key must be ${sodium.crypto_secretbox_KEYBYTES} bytes, got ${key.length}`,
+    );
+  }
+  if (nonce.length !== sodium.crypto_secretbox_NONCEBYTES) {
+    throw new Error(
+      `vault: nonce must be ${sodium.crypto_secretbox_NONCEBYTES} bytes, got ${nonce.length}`,
+    );
+  }
   return sodium.crypto_secretbox_open_easy(ciphertext, nonce, key);
 }

@@ -115,3 +115,31 @@ describe('end-to-end: Argon2id-derived key + secretbox round-trip', () => {
     expect(new TextDecoder().decode(recovered)).toBe('{"wallet":"something"}');
   });
 });
+
+describe('input validation', () => {
+  const makeKey = () => sodium.randombytes_buf(sodium.crypto_secretbox_KEYBYTES);
+
+  it('deriveKey rejects wrong-length salt', async () => {
+    const shortSalt = new Uint8Array(8);
+    await expect(deriveKey('pass', shortSalt, opslimit, memlimit)).rejects.toThrow(/salt must be \d+ bytes/);
+  });
+
+  it('encrypt rejects wrong-length key', async () => {
+    const shortKey = new Uint8Array(16);
+    await expect(encrypt(shortKey, new Uint8Array([1, 2, 3]))).rejects.toThrow(/key must be \d+ bytes/);
+  });
+
+  it('decrypt rejects wrong-length key', async () => {
+    const key = makeKey();
+    const { nonce, ciphertext } = await encrypt(key, new Uint8Array([1, 2, 3]));
+    const shortKey = new Uint8Array(16);
+    await expect(decrypt(shortKey, nonce, ciphertext)).rejects.toThrow(/key must be \d+ bytes/);
+  });
+
+  it('decrypt rejects wrong-length nonce', async () => {
+    const key = makeKey();
+    const { ciphertext } = await encrypt(key, new Uint8Array([1, 2, 3]));
+    const shortNonce = new Uint8Array(8);
+    await expect(decrypt(key, shortNonce, ciphertext)).rejects.toThrow(/nonce must be \d+ bytes/);
+  });
+});
