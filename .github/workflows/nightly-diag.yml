@@ -1,0 +1,67 @@
+name: Nightly Diagnostics
+
+on:
+  schedule:
+    # Daily at 08:00 UTC. Sized to run after typical US/EU nightly batches have
+    # settled so a failing probe reflects a real incident, not provider churn.
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  diag:
+    name: pnpm diag --check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # If the repo owner hasn't configured any provider credential, the probe
+      # run is skipped rather than failed. Credentials live in the repo's
+      # Actions secrets as HELIUS_RPC / TRITON_RPC / QUICKNODE_RPC (HTTPS URLs
+      # with embedded API keys) plus the matching GEYSER variants.
+      - name: Probe Helius RPC
+        if: ${{ secrets.HELIUS_RPC != '' }}
+        run: pnpm diag probe-rpc --url "${{ secrets.HELIUS_RPC }}" --name helius --check
+
+      - name: Probe Triton RPC
+        if: ${{ secrets.TRITON_RPC != '' }}
+        run: pnpm diag probe-rpc --url "${{ secrets.TRITON_RPC }}" --name triton --check
+
+      - name: Probe QuickNode RPC
+        if: ${{ secrets.QUICKNODE_RPC != '' }}
+        run: pnpm diag probe-rpc --url "${{ secrets.QUICKNODE_RPC }}" --name quicknode --check
+
+      - name: Probe Helius Geyser
+        if: ${{ secrets.HELIUS_GEYSER != '' }}
+        run: pnpm diag probe-geyser --url "${{ secrets.HELIUS_GEYSER }}" --name helius --check
+
+      - name: Probe Triton Geyser
+        if: ${{ secrets.TRITON_GEYSER != '' }}
+        run: pnpm diag probe-geyser --url "${{ secrets.TRITON_GEYSER }}" --name triton --check
+
+      - name: Note when no credentials are configured
+        if: >-
+          ${{ secrets.HELIUS_RPC == '' &&
+              secrets.TRITON_RPC == '' &&
+              secrets.QUICKNODE_RPC == '' &&
+              secrets.HELIUS_GEYSER == '' &&
+              secrets.TRITON_GEYSER == '' }}
+        run: |
+          echo "::notice::No provider credentials configured in repo secrets. Skipping live probes."
+          echo "To enable, add HELIUS_RPC / TRITON_RPC / QUICKNODE_RPC / HELIUS_GEYSER / TRITON_GEYSER."

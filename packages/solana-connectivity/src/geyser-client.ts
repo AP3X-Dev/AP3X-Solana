@@ -90,7 +90,7 @@ export function resolveCreateRequireBase(): string {
   // spurious "import.meta is empty in CJS" warning — that branch is
   // unreachable in CJS (guarded by the `__filename` check above), but
   // esbuild's static analysis doesn't prove that.
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  // eslint-disable-next-line no-new-func
   const getMetaUrl = new Function('return import.meta.url') as () => string;
   return getMetaUrl();
 }
