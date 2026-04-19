@@ -23,3 +23,4 @@ Mode: Option A (prep environment, run autonomously, defer live-mainnet acceptanc
 - **B2 (gate 2):** Run `pnpm capture:spl` + `pnpm capture:metaplex`, then run regression suites against 500+ captured accounts.
 - **B3 (gate 3):** Live Geyser 10-slot gap recovery test, verify recovery via RPC backfill within 5 slots.
 - **B4 (gate 5):** Priority-fee p99 ± 10% vs observed landed fees on 10 sample slots.
+- **B5 (T14):** Live Yellowstone endpoint test for `GeyserClient` — open a real subscription against Helius/Triton, observe ≥10 minutes of slot/account updates, confirm zero dropped events under nominal load, and validate checkpoint resume across a process restart. Gated on credentials. Synthetic proto + in-process gRPC loopback coverage shipped in T14 as a stand-in; B5 is the live counterpart.

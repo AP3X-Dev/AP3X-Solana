@@ -24,6 +24,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ap3x/solana-core": "workspace:*"
+    "@ap3x/solana-core": "workspace:*",
+    "@grpc/grpc-js": "^1.11.0",
+    "@grpc/proto-loader": "^0.7.13"
   }
 }

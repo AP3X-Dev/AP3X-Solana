@@ -69,7 +69,7 @@ ap3x-solana/
 - Create: `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json`, `.prettierrc`, `.changeset/config.json`, `.npmrc`
 - Create: `README.md` (substrate-positioning short version), `docs/CONTRIBUTING.md`
 
-- [ ] **Step 1: Create root `package.json`**
+- [x] **Step 1: Create root `package.json`**
 
 ```json
 {
@@ -105,7 +105,7 @@ ap3x-solana/
 }
 ```
 
-- [ ] **Step 2: Create `pnpm-workspace.yaml`**
+- [x] **Step 2: Create `pnpm-workspace.yaml`**
 
 ```yaml
 packages:
@@ -113,7 +113,7 @@ packages:
   - 'examples/*'
 ```
 
-- [ ] **Step 3: Create `turbo.json`**
+- [x] **Step 3: Create `turbo.json`**
 
 ```json
 {
@@ -129,7 +129,7 @@ packages:
 }
 ```
 
-- [ ] **Step 4: Create `tsconfig.base.json`**
+- [x] **Step 4: Create `tsconfig.base.json`**
 
 ```json
 {
@@ -155,13 +155,13 @@ packages:
 }
 ```
 
-- [ ] **Step 5: Create `.prettierrc`**
+- [x] **Step 5: Create `.prettierrc`**
 
 ```json
 { "singleQuote": true, "trailingComma": "all", "printWidth": 100, "semi": true }
 ```
 
-- [ ] **Step 6: Create `.changeset/config.json`**
+- [x] **Step 6: Create `.changeset/config.json`**
 
 ```json
 {
@@ -177,22 +177,22 @@ packages:
 }
 ```
 
-- [ ] **Step 7: Create `.npmrc`**
+- [x] **Step 7: Create `.npmrc`**
 
 ```
 auto-install-peers=true
 strict-peer-dependencies=false
 ```
 
-- [ ] **Step 8: Create `README.md`**
+- [x] **Step 8: Create `README.md`**
 
 Short positioning README — see spec Section 1. Mention `@ap3x/solana-*` as a generic Solana agent toolkit, link to PRP-01, list packages.
 
-- [ ] **Step 9: Create `docs/CONTRIBUTING.md`**
+- [x] **Step 9: Create `docs/CONTRIBUTING.md`**
 
 Cover: zero-deps rule, allowed exceptions (`@noble/ed25519`, `libsodium-wrappers`), commit message style (no AI attribution per global CLAUDE.md), changeset workflow, how to run `pnpm diag`, how to capture fixtures.
 
-- [ ] **Step 10: Run `pnpm install` to generate lockfile**
+- [x] **Step 10: Run `pnpm install` to generate lockfile**
 
 ```bash
 pnpm install
@@ -200,7 +200,7 @@ pnpm install
 
 Expected: lockfile created, no errors.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add .
@@ -217,7 +217,7 @@ git commit -m "PRP-01: monorepo scaffold (pnpm + turbo + tsconfig + changesets)"
 - Create: `packages/solana-core/src/base58.test.ts`
 - Create: `packages/solana-core/tests/fixtures/base58-vectors.json`
 
-- [ ] **Step 1: Scaffold the package**
+- [x] **Step 1: Scaffold the package**
 
 `packages/solana-core/package.json`:
 ```json
@@ -259,11 +259,11 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({ test: { coverage: { provider: 'v8', thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 } } } });
 ```
 
-- [ ] **Step 2: Generate base58 test vectors**
+- [x] **Step 2: Generate base58 test vectors**
 
 Add ~50 known input/output pairs to `tests/fixtures/base58-vectors.json` covering: empty, single byte (0x00, 0xff), 32-byte zero PublicKey, 32-byte all-ones, leading zeros, common Solana program IDs (TOKEN_PROGRAM, SYSTEM_PROGRAM, METAPLEX_PROGRAM), randomly-generated 64-byte signatures.
 
-- [ ] **Step 3: Write the failing test**
+- [x] **Step 3: Write the failing test**
 
 `packages/solana-core/src/base58.test.ts`:
 ```ts
@@ -292,25 +292,25 @@ describe('base58', () => {
 });
 ```
 
-- [ ] **Step 4: Run test — should fail**
+- [x] **Step 4: Run test — should fail**
 
 `pnpm --filter @ap3x/solana-core test`. Expected: FAIL (`encode`/`decode` not exported).
 
-- [ ] **Step 5: Implement `base58.ts`**
+- [x] **Step 5: Implement `base58.ts`**
 
 Standard BigInt-based bs58 encoder/decoder using the Bitcoin alphabet (`123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz`). Handle leading zero bytes (encode as leading '1's). Validate alphabet on decode.
 
-- [ ] **Step 6: Add `index.ts` re-export**
+- [x] **Step 6: Add `index.ts` re-export**
 
 ```ts
 export * from './base58';
 ```
 
-- [ ] **Step 7: Run tests — pass**
+- [x] **Step 7: Run tests — pass**
 
 `pnpm --filter @ap3x/solana-core test`. Expected: PASS, coverage ≥80%.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add packages/solana-core
@@ -325,17 +325,17 @@ git commit -m "solana-core: base58 encode/decode + vector tests"
 - Create: `packages/solana-core/src/public-key.ts`
 - Create: `packages/solana-core/src/public-key.test.ts`
 
-- [ ] **Step 1: Write tests** for `PublicKey.fromBase58`, `fromBytes`, `toBase58`, `toBuffer`, `equals`, `toString`. Include known on-chain pubkeys (TOKEN_PROGRAM, SYSTEM_PROGRAM, etc.) as fixtures. Reject inputs of incorrect byte length.
+- [x] **Step 1: Write tests** for `PublicKey.fromBase58`, `fromBytes`, `toBase58`, `toBuffer`, `equals`, `toString`. Include known on-chain pubkeys (TOKEN_PROGRAM, SYSTEM_PROGRAM, etc.) as fixtures. Reject inputs of incorrect byte length.
 
-- [ ] **Step 2: Run tests — fail**
+- [x] **Step 2: Run tests — fail**
 
-- [ ] **Step 3: Implement** `class PublicKey` per spec Section 3.1. Read-only. Wraps a `Uint8Array(32)`. Use base58 from Task 2.
+- [x] **Step 3: Implement** `class PublicKey` per spec Section 3.1. Read-only. Wraps a `Uint8Array(32)`. Use base58 from Task 2.
 
-- [ ] **Step 4: Re-export** from `index.ts`.
+- [x] **Step 4: Re-export** from `index.ts`.
 
-- [ ] **Step 5: Run tests — pass**
+- [x] **Step 5: Run tests — pass**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -am "solana-core: PublicKey class"
@@ -347,17 +347,17 @@ git commit -am "solana-core: PublicKey class"
 
 **Files:** `packages/solana-core/src/cluster.ts` + test.
 
-- [ ] **Step 1: Write tests** for `Cluster` enum and `clusterRpcUrl(cluster, customUrl?)`. Default URLs: mainnet=`https://api.mainnet-beta.solana.com`, devnet=`https://api.devnet.solana.com`, testnet=`https://api.testnet.solana.com`, custom=throws if no URL provided.
+- [x] **Step 1: Write tests** for `Cluster` enum and `clusterRpcUrl(cluster, customUrl?)`. Default URLs: mainnet=`https://api.mainnet-beta.solana.com`, devnet=`https://api.devnet.solana.com`, testnet=`https://api.testnet.solana.com`, custom=throws if no URL provided.
 
-- [ ] **Step 2: Run — fail**
+- [x] **Step 2: Run — fail**
 
-- [ ] **Step 3: Implement** per spec Section 3.1.
+- [x] **Step 3: Implement** per spec Section 3.1.
 
-- [ ] **Step 4: Re-export.**
+- [x] **Step 4: Re-export.**
 
-- [ ] **Step 5: Run — pass.**
+- [x] **Step 5: Run — pass.**
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ---
 
@@ -365,17 +365,17 @@ git commit -am "solana-core: PublicKey class"
 
 **Files:** `packages/solana-core/src/compact-u16.ts` + test.
 
-- [ ] **Step 1: Write tests** with known shortvec encodings: `0 → [0x00]`, `127 → [0x7f]`, `128 → [0x80, 0x01]`, `16383 → [0xff, 0x7f]`, `16384 → [0x80, 0x80, 0x01]`, `65535 → [0xff, 0xff, 0x03]`. Include round-trip property test with random values 0..65535.
+- [x] **Step 1: Write tests** with known shortvec encodings: `0 → [0x00]`, `127 → [0x7f]`, `128 → [0x80, 0x01]`, `16383 → [0xff, 0x7f]`, `16384 → [0x80, 0x80, 0x01]`, `65535 → [0xff, 0xff, 0x03]`. Include round-trip property test with random values 0..65535.
 
-- [ ] **Step 2: Run — fail**
+- [x] **Step 2: Run — fail**
 
-- [ ] **Step 3: Implement** `encode(n: number): Uint8Array` and `decode(bytes: Uint8Array, offset: number): { value: number, length: number }` per Solana shortvec spec.
+- [x] **Step 3: Implement** `encode(n: number): Uint8Array` and `decode(bytes: Uint8Array, offset: number): { value: number, length: number }` per Solana shortvec spec.
 
-- [ ] **Step 4: Re-export.**
+- [x] **Step 4: Re-export.**
 
-- [ ] **Step 5: Run — pass.**
+- [x] **Step 5: Run — pass.**
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ---
 
@@ -383,17 +383,17 @@ git commit -am "solana-core: PublicKey class"
 
 **Files:** `packages/solana-core/src/borsh.ts` + test.
 
-- [ ] **Step 1: Write tests** covering the `Reader` class (`new Reader(buf)`, `r.offset`, `r.remaining()`) plus all primitive readers/writers per spec Section 3.1: `readU8/U16/U32/U64/I64/Bool`, `readBytes(n)`, `readVec(itemReader)`, `readOption(itemReader)`, `readPubkey()`, `readString()`, and matching `write*` symmetric helpers via a `Writer` class. U64/I64 return `bigint`. Pubkey readers return `PublicKey`. `readString` reads u32 length-prefixed UTF-8.
+- [x] **Step 1: Write tests** covering the `Reader` class (`new Reader(buf)`, `r.offset`, `r.remaining()`) plus all primitive readers/writers per spec Section 3.1: `readU8/U16/U32/U64/I64/Bool`, `readBytes(n)`, `readVec(itemReader)`, `readOption(itemReader)`, `readPubkey()`, `readString()`, and matching `write*` symmetric helpers via a `Writer` class. U64/I64 return `bigint`. Pubkey readers return `PublicKey`. `readString` reads u32 length-prefixed UTF-8.
 
-- [ ] **Step 2: Run — fail**
+- [x] **Step 2: Run — fail**
 
-- [ ] **Step 3: Implement** `borsh.ts` per spec. Use `DataView` for numeric reads. `readPubkey` consumes 32 bytes. `Reader` mutates `offset` on each read.
+- [x] **Step 3: Implement** `borsh.ts` per spec. Use `DataView` for numeric reads. `readPubkey` consumes 32 bytes. `Reader` mutates `offset` on each read.
 
-- [ ] **Step 4: Re-export.**
+- [x] **Step 4: Re-export.**
 
-- [ ] **Step 5: Run — pass.**
+- [x] **Step 5: Run — pass.**
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ---
 
@@ -401,17 +401,17 @@ git commit -am "solana-core: PublicKey class"
 
 **Files:** `packages/solana-core/src/errors.ts` + test.
 
-- [ ] **Step 1: Write tests** verifying: `Ap3xError` extends `Error` with `cause`, `code`. Subclasses (`RpcError`, `DecodingError`, `TimeoutError`, `ConfigError`) preserve `cause`, expose `meta`. `instanceof` checks work.
+- [x] **Step 1: Write tests** verifying: `Ap3xError` extends `Error` with `cause`, `code`. Subclasses (`RpcError`, `DecodingError`, `TimeoutError`, `ConfigError`) preserve `cause`, expose `meta`. `instanceof` checks work.
 
-- [ ] **Step 2: Run — fail**
+- [x] **Step 2: Run — fail**
 
-- [ ] **Step 3: Implement** per spec Section 3.1. `RpcError` `code: 'timeout'|'rate_limited'|'http'|'rpc_method'|'parse'`. `DecodingError` `meta: { programId?, accountKey?, byteOffset?, expected, actual }`.
+- [x] **Step 3: Implement** per spec Section 3.1. `RpcError` `code: 'timeout'|'rate_limited'|'http'|'rpc_method'|'parse'`. `DecodingError` `meta: { programId?, accountKey?, byteOffset?, expected, actual }`.
 
-- [ ] **Step 4: Re-export.**
+- [x] **Step 4: Re-export.**
 
-- [ ] **Step 5: Run — pass.**
+- [x] **Step 5: Run — pass.**
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ---
 
@@ -421,17 +421,17 @@ git commit -am "solana-core: PublicKey class"
 
 Add `msw` to root devDependencies (`pnpm add -Dw msw`).
 
-- [ ] **Step 1: Write tests** covering: success path; retry on 5xx + network failure with exponential backoff + jitter; timeout abort; circuit breaker opens after threshold consecutive failures, half-opens after recoveryMs, closes after success; emits `metrics` events with `{ latencyMs, statusCode, errorClass, retryCount }`.
+- [x] **Step 1: Write tests** covering: success path; retry on 5xx + network failure with exponential backoff + jitter; timeout abort; circuit breaker opens after threshold consecutive failures, half-opens after recoveryMs, closes after success; emits `metrics` events with `{ latencyMs, statusCode, errorClass, retryCount }`.
 
-- [ ] **Step 2: Run — fail**
+- [x] **Step 2: Run — fail**
 
-- [ ] **Step 3: Implement** `HttpClient` per spec Section 3.1. Use `fetch` (native in Node 20+) + `AbortController` for timeout. EventEmitter base. Retry loop with `await delay(backoff(attempt) + jitter)`. Circuit-breaker state machine (`closed → open → half-open`).
+- [x] **Step 3: Implement** `HttpClient` per spec Section 3.1. Use `fetch` (native in Node 20+) + `AbortController` for timeout. EventEmitter base. Retry loop with `await delay(backoff(attempt) + jitter)`. Circuit-breaker state machine (`closed → open → half-open`).
 
-- [ ] **Step 4: Re-export.**
+- [x] **Step 4: Re-export.**
 
-- [ ] **Step 5: Run — pass.**
+- [x] **Step 5: Run — pass.**
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ---
 
@@ -439,17 +439,17 @@ Add `msw` to root devDependencies (`pnpm add -Dw msw`).
 
 **Files:** `packages/solana-core/src/metrics.ts` + test.
 
-- [ ] **Step 1: Write tests** verifying a shared `metrics` `EventEmitter` instance is exported; subscribers receive `{ ts, package, op, latencyMs?, errorClass?, meta }` payloads; `emit(event)` is a typed helper.
+- [x] **Step 1: Write tests** verifying a shared `metrics` `EventEmitter` instance is exported; subscribers receive `{ ts, package, op, latencyMs?, errorClass?, meta }` payloads; `emit(event)` is a typed helper.
 
-- [ ] **Step 2: Run — fail**
+- [x] **Step 2: Run — fail**
 
-- [ ] **Step 3: Implement** singleton `EventEmitter` exported as `metrics`. Provide a `MetricEvent` type. Provide `emitMetric(event: MetricEvent)` helper.
+- [x] **Step 3: Implement** singleton `EventEmitter` exported as `metrics`. Provide a `MetricEvent` type. Provide `emitMetric(event: MetricEvent)` helper.
 
-- [ ] **Step 4: Re-export.**
+- [x] **Step 4: Re-export.**
 
-- [ ] **Step 5: Run — pass.**
+- [x] **Step 5: Run — pass.**
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ---
 
@@ -462,11 +462,11 @@ Add `msw` to root devDependencies (`pnpm add -Dw msw`).
 
 Add `libsodium-wrappers` + `@noble/ed25519` to package deps.
 
-- [ ] **Step 1: Scaffold** package mirroring solana-core layout. Add `dependencies: { "@ap3x/solana-core": "workspace:*", "libsodium-wrappers": "^0.7.13", "@noble/ed25519": "^2.1.0" }`.
+- [x] **Step 1: Scaffold** package mirroring solana-core layout. Add `dependencies: { "@ap3x/solana-core": "workspace:*", "libsodium-wrappers": "^0.7.13", "@noble/ed25519": "^2.1.0" }`.
 
-- [ ] **Step 2: Write tests** for `crypto.ts`: `deriveKey(passphrase, salt, opslimit, memlimit)` returns 32 bytes; `encrypt(key, plaintext) → { nonce, ciphertext }`; `decrypt(key, nonce, ciphertext) → plaintext`; round-trips with random keys/data; `decrypt` throws on tampered ciphertext.
+- [x] **Step 2: Write tests** for `crypto.ts`: `deriveKey(passphrase, salt, opslimit, memlimit)` returns 32 bytes; `encrypt(key, plaintext) → { nonce, ciphertext }`; `decrypt(key, nonce, ciphertext) → plaintext`; round-trips with random keys/data; `decrypt` throws on tampered ciphertext.
 
-- [ ] **Step 3: Run — fail**
+- [x] **Step 3: Run — fail**
 
 - [ ] **Step 4: Implement** `crypto.ts` using `libsodium-wrappers`:
 
@@ -501,21 +501,21 @@ export async function decrypt(key: Uint8Array, nonce: Uint8Array, ciphertext: Ui
 
 **Files:** `packages/solana-vault/src/{vault.ts, wallet-handle.ts, storage-file.ts}` + tests.
 
-- [ ] **Step 1: Write tests** covering: `Vault.addWallet(name, role, secretKey, passphrase)` writes encrypted record; `unlock(name, passphrase)` returns a `WalletHandle`; `lock(name)` clears in-memory key; `WalletHandle.sign(message)` signs ed25519; `WalletHandle.signTransaction(txBytes)` signs the message digest; `WalletHandle.address` exposes the public key; raw secret key never exposed via any handle method; passphrase-policy enforcement (≥12 chars, ≥3 of {lower, upper, digit, symbol}); fast-check property test for encrypt → decrypt → sign → verify on 100 random keypairs.
+- [x] **Step 1: Write tests** covering: `Vault.addWallet(name, role, secretKey, passphrase)` writes encrypted record; `unlock(name, passphrase)` returns a `WalletHandle`; `lock(name)` clears in-memory key; `WalletHandle.sign(message)` signs ed25519; `WalletHandle.signTransaction(txBytes)` signs the message digest; `WalletHandle.address` exposes the public key; raw secret key never exposed via any handle method; passphrase-policy enforcement (≥12 chars, ≥3 of {lower, upper, digit, symbol}); fast-check property test for encrypt → decrypt → sign → verify on 100 random keypairs.
 
-- [ ] **Step 2: Run — fail**
+- [x] **Step 2: Run — fail**
 
-- [ ] **Step 3: Implement** `wallet-handle.ts`: opaque class holding decrypted secret key (32 bytes ed25519 seed) in a closure, `sign()` uses `@noble/ed25519` `sign()`, `signTransaction()` derives signature over `tx[1..]` (skip the signature count byte) per Solana v0 conventions and returns the signed serialization. `address: PublicKey`.
+- [x] **Step 3: Implement** `wallet-handle.ts`: opaque class holding decrypted secret key (32 bytes ed25519 seed) in a closure, `sign()` uses `@noble/ed25519` `sign()`, `signTransaction()` derives signature over `tx[1..]` (skip the signature count byte) per Solana v0 conventions and returns the signed serialization. `address: PublicKey`.
 
-- [ ] **Step 4: Implement** `storage-file.ts`: `FileVaultStorage` constructor `{ baseDir }`. Reads/writes JSON-with-base64 fields per spec Section 3.7. `appendAudit` writes a JSONL line via `fs.appendFile`. Default baseDir: `~/.ap3x/vault/`.
+- [x] **Step 4: Implement** `storage-file.ts`: `FileVaultStorage` constructor `{ baseDir }`. Reads/writes JSON-with-base64 fields per spec Section 3.7. `appendAudit` writes a JSONL line via `fs.appendFile`. Default baseDir: `~/.ap3x/vault/`.
 
-- [ ] **Step 5: Implement** `vault.ts` orchestrating storage + crypto + wallet-handle. Enforce passphrase policy. Argon2id moderate defaults from libsodium constants.
+- [x] **Step 5: Implement** `vault.ts` orchestrating storage + crypto + wallet-handle. Enforce passphrase policy. Argon2id moderate defaults from libsodium constants.
 
-- [ ] **Step 6: Re-export.**
+- [x] **Step 6: Re-export.**
 
-- [ ] **Step 7: Run — pass, verify property tests.**
+- [x] **Step 7: Run — pass, verify property tests.**
 
-- [ ] **Step 8: Commit.**
+- [x] **Step 8: Commit.**
 
 ---
 
@@ -523,15 +523,15 @@ export async function decrypt(key: Uint8Array, nonce: Uint8Array, ciphertext: Ui
 
 **Files:** `packages/solana-vault/src/{reserve-guard.ts, audit.ts}` + tests; extend `vault.ts` and `wallet-handle.ts`.
 
-- [ ] **Step 1: Write tests** for: `reserve-guard.checkSpend({ wallet, txEstimatedDelta, currentBalance, reserveLamports }) → { ok, reason? }`; `WalletHandle.signTransaction` rejects with `WalletReserveBreach` if guard returns `!ok` (the handle accepts an optional `getBalance: () => Promise<bigint>` and `estimateDelta: (tx) => bigint` injected at unlock time). Audit log: `audit('unlock'|'sign'|'rotate'|'create', meta)` appends to JSONL; `Vault.audit(name)` reads back. `rotateKey(name, oldPp, newPp)` re-encrypts under new passphrase; old passphrase no longer unlocks.
+- [x] **Step 1: Write tests** for: `reserve-guard.checkSpend({ wallet, txEstimatedDelta, currentBalance, reserveLamports }) → { ok, reason? }`; `WalletHandle.signTransaction` rejects with `WalletReserveBreach` if guard returns `!ok` (the handle accepts an optional `getBalance: () => Promise<bigint>` and `estimateDelta: (tx) => bigint` injected at unlock time). Audit log: `audit('unlock'|'sign'|'rotate'|'create', meta)` appends to JSONL; `Vault.audit(name)` reads back. `rotateKey(name, oldPp, newPp)` re-encrypts under new passphrase; old passphrase no longer unlocks.
 
-- [ ] **Step 2: Run — fail**
+- [x] **Step 2: Run — fail**
 
-- [ ] **Step 3: Implement** `reserve-guard.ts` (pure function), `audit.ts` (append + read), extend `vault.ts` + `wallet-handle.ts`.
+- [x] **Step 3: Implement** `reserve-guard.ts` (pure function), `audit.ts` (append + read), extend `vault.ts` + `wallet-handle.ts`.
 
-- [ ] **Step 4: Run — pass.**
+- [x] **Step 4: Run — pass.**
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ---
 
@@ -568,9 +568,9 @@ Dep: `@ap3x/solana-core: workspace:*`.
 
 Add deps: `@grpc/grpc-js: ^1.11.0`, `@grpc/proto-loader: ^0.7.13`.
 
-- [ ] **Step 1: Vendor the proto** — copy from yellowstone-grpc upstream (https://github.com/rpcpool/yellowstone-grpc) `proto/geyser.proto`. Pin commit hash in a header comment.
+- [x] **Step 1: Vendor the proto** — copy from yellowstone-grpc upstream (https://github.com/rpcpool/yellowstone-grpc) `proto/geyser.proto`. Pin commit hash in a header comment.
 
-- [ ] **Step 2: Write tests** for `GeyserClient`:
+- [x] **Step 2: Write tests** for `GeyserClient`:
   - Builds a subscription request from `SubscribeRequest` typed input
   - Connects to a fake gRPC server in tests, receives sample updates, hands them to handler
   - Backpressure: when handler is slow, queue caps at 1000, drops oldest, emits `dropped` event with cumulative count
@@ -578,17 +578,17 @@ Add deps: `@grpc/grpc-js: ^1.11.0`, `@grpc/proto-loader: ^0.7.13`.
   - On `gap`, optionally calls injected `onGap(from, to)` callback to trigger backfill
   - Checkpoint persisted via injected `CheckpointStore` after every N updates (default N=100); reload on reconnect
 
-- [ ] **Step 3: Run — fail**
+- [x] **Step 3: Run — fail**
 
-- [ ] **Step 4: Implement** using `@grpc/proto-loader` + `@grpc/grpc-js`. Bidirectional stream subscription per Yellowstone protocol. `subscribe(req, handler)` returns `{ close(): void, on(event, cb): void }`.
+- [x] **Step 4: Implement** using `@grpc/proto-loader` + `@grpc/grpc-js`. Bidirectional stream subscription per Yellowstone protocol. `subscribe(req, handler)` returns `{ close(): void, on(event, cb): void }`.
 
-- [ ] **Step 5: Re-export.**
+- [x] **Step 5: Re-export.**
 
-- [ ] **Step 6: Run — pass with synthetic streams.**
+- [x] **Step 6: Run — pass with synthetic streams.**
 
-- [ ] **Step 7: Note in advisor backlog** — live Geyser endpoint test is gated on credentials.
+- [x] **Step 7: Note in advisor backlog** — live Geyser endpoint test is gated on credentials.
 
-- [ ] **Step 8: Commit.**
+- [x] **Step 8: Commit.**
 
 ---
 

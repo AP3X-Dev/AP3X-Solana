@@ -12,3 +12,17 @@ export type {
   RpcResultOf,
   RpcCallOptions,
 } from './rpc-pool';
+export { GeyserClient, defaultGrpcAdapter, resolveProtoDir } from './geyser-client';
+export type {
+  GeyserClientOptions,
+  GeyserEndpoint,
+  GeyserUpdate,
+  SubscribeRequest,
+  Subscription,
+  DroppedEvent,
+  GapEvent,
+  GrpcAdapter,
+  GrpcClientHandle,
+  GrpcDuplexStream,
+} from './geyser-client';
+export type { Checkpoint, CheckpointStore } from './checkpoint-store';
