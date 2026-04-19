@@ -1,0 +1,110 @@
+# PRP-02 — Pump.fun vertical, Phase 0: Protocol + typed read-only client
+
+**Repo:** `ap3x-solana/` (same monorepo; substrate + pump.fun vertical coexist)
+**Depends on:** PRP-01 (Solana substrate)
+**Unblocks:** PRP-03 (execution + safety)
+**Estimate:** 1-2 weeks solo
+**Master spec:** [00-master-platform-prp.md §5.1, §6.3](./00-master-platform-prp.md) (Layer 3 of the 10-layer architecture)
+
+## Goal
+
+First Solana vertical on the platform. Ship **`@ap3x/pumpfun-*`** — pump.fun program decoders, bonding curve math, typed read-only client — entirely on top of `@ap3x/solana-*`. At the end of PRP-02 a developer subscribes to every pump.fun on-chain event with typed records + accurate curve state, <500ms end-to-end lag.
+
+This PRP is the first real test of `@ap3x/solana-*` as a foundation. It also deliberately ships fast (1-2 weeks) because most of the work is done — the substrate handles connectivity, tx, SPL, Metaplex, event framework, and keys. Pump.fun only needs its program-specific protocol code.
+
+## In scope
+
+### Package `@ap3x/pumpfun-protocol`
+
+- **Typed read-only client** — covers pump.fun's on-chain surface:
+  - `curveState(mint)` — reads the bonding curve account directly via `@ap3x/solana-connectivity` RPC; returns typed record (virtual_sol_reserves, virtual_token_reserves, real_sol_reserves, real_token_reserves, complete, creator, created_at)
+  - `metadata(mint)` — via `@ap3x/solana-metaplex` resolver
+  - `recentTrades(mint, window)` — from Geyser stream buffer (`@ap3x/solana-events`) + RPC historical fill
+  - `holders(mint, limit)` — via `@ap3x/solana-spl` holder queries
+  - `creator(mint)` — extracted from curve state account
+- **Bonding curve math** — pure functions, unit-tested against on-chain observed trades:
+  - `priceFromReserves(reserves)`
+  - `tokensOutForSolIn(solIn, reserves)`
+  - `solOutForTokensIn(tokensIn, reserves)`
+  - `pctToGraduation(reserves)`
+  - `priceImpactBps(size, reserves)`
+- **Instruction builders are NOT in scope for PRP-02** — those live in PRP-03 alongside the simulate/submit/receipt machinery. PRP-02 stays read-only.
+
+### Package `@ap3x/pumpfun-events`
+
+- **Program event decoders** — one decoder per on-chain event variant registered against `@ap3x/solana-events`:
+  - `CreateEvent` — new token mint on bonding curve
+  - `TradeEvent` — buy + sell on bonding curve
+  - `CompleteEvent` — bonding curve hits graduation threshold
+  - `MigrateEvent` — migration to PumpSwap AMM
+- **Typed event union** — exhaustive match enforced at the type level; unknown variants surface via the `@ap3x/solana-events` unknown channel
+- **Slot + timestamp + signature** attached to every decoded event
+
+### Package `@ap3x/pumpfun-compat`
+
+Thin wrapper that wraps pump.fun's off-chain APIs Chad's current stack uses — `advanced-api-v2.pump.fun` (feeds, creator history, social signals) + `frontend-api-v3.pump.fun` (single-token detail). Not on-chain data; augmentation data.
+
+- Gamma-style typed client over the advanced-api-v2 surface
+- Drift-resilient zod schemas (carries over learnings from Chad's Slice 6 diagnostic + pump-gateway work)
+- Cached + paginated where appropriate
+- **Lifted from Chad's `packages/pump-gateway/` (PRP-1 work)** — that code already knows how to handle the endpoints' shape drift and CF-gating issues. Direct lift + repackage under `@ap3x/pumpfun-compat`.
+
+### Example app `examples/pumpfun-watch/`
+
+- ~100-line Node script that uses `@ap3x/solana-connectivity` + `@ap3x/pumpfun-events` + `@ap3x/pumpfun-protocol` to:
+  - Subscribe to pump.fun program via Geyser
+  - Decode all event variants with full typing
+  - Track curve state on all mints in the subscription window
+  - Print typed stream to stdout with latency measurement
+- Replaces `solana-watch` from PRP-01 as the live dogfooding target.
+
+## Out of scope
+
+- **Write path** (instruction builders, simulate, submit, receipts) → PRP-03
+- **Jito bundle dispatcher** (builder in substrate is there; dispatcher in PRP-03)
+- **Policy engine, tiers, circuit breakers** → PRP-03
+- **Event store, historical backfill as queryable archive, signal derivations** → PRP-04
+- **Dev reputation / smart money / bundle detection / graduation ETA** → PRP-04
+- **Backtest harness** → PRP-04
+
+## Deliverables
+
+1. Three packages built + tested in `ap3x-solana/`: `@ap3x/pumpfun-protocol`, `@ap3x/pumpfun-events`, `@ap3x/pumpfun-compat`.
+2. Pump.fun decoders registered with `@ap3x/solana-events` framework — verified by the example app processing real events.
+3. `examples/pumpfun-watch/` running 1 hour continuous on live mainnet; printing every pump.fun event with typed records.
+4. Bonding curve math regression suite with ≥ 200 real on-chain trades matching observed fills within 1bps.
+5. Documentation — READMEs + usage examples; `docs/architecture/pumpfun.md` explaining how the vertical sits on top of the substrate.
+
+## Acceptance criteria (gate)
+
+1. `pumpfun-watch` example runs 1 hour continuous, receives every `CreateEvent` + `TradeEvent` + `CompleteEvent` + `MigrateEvent`, decodes with **p50 < 500ms, p99 < 2s** end-to-end lag.
+2. Bonding curve math passes regression suite of ≥ 200 real on-chain trades within 1bps.
+3. `curveState(mint)` returns correct values for a sample of 10 live mints verified against on-chain account inspection.
+4. `@ap3x/pumpfun-compat` smoke-tests against live advanced-api-v2 + frontend-api-v3 return non-empty data; matches Chad's current pump-gateway behavior.
+5. Zero modifications required to `@ap3x/solana-*` substrate packages — verified by git diff + substrate test suite staying green.
+6. Unknown event variants decode to structured `UnknownEventDecode` records (zero silent drops) — verified by feeding synthetic malformed logs.
+7. CI green on Ubuntu + Windows.
+
+## Key design decisions
+
+- **Pump.fun as first validator of substrate, not substrate's reason for being.** Substrate design decisions made in PRP-01 are re-evaluated only if pump.fun concretely can't implement something on top of them. Required substrate modifications trigger an immediate PRP-01.1 refactor.
+- **Compat package lifts Chad's pump-gateway work.** No rewrite — direct lift of battle-tested code. License: our original MIT. Chad's pump-gateway package gets deprecated when PRP-11 rebuilds Chad.
+- **Read-only only.** Zero write-path code in PRP-02. The discipline is: ship the vertical's perception surface before its action surface. Strategies can't trade yet, but they can observe with full typed fidelity.
+- **Event decoders plug into substrate's registry.** Pump.fun-specific decoders live in `@ap3x/pumpfun-events` but register with `@ap3x/solana-events`' framework. Other Solana verticals' decoders coexist without conflict.
+
+## Risks + open questions
+
+| Risk | Mitigation |
+|---|---|
+| Pump.fun program upgrade breaks decoders | Nightly diag probes decode a fresh mainnet event sample; shape drift triggers alarm; zod-style tolerant schemas with structured parse-error channel |
+| Advanced-api-v2 continues to drift (ongoing from Chad's PRP-1 experience) | Leverages Chad's hard-won knowledge; nightly upstream smoke tests; shape-drift-triggered issues |
+| Curve math off-by-one errors | Regression suite gate; live sanity checks during dogfooding |
+| Decoder registry conflicts when multiple Solana verticals register against same program | Shouldn't happen (verticals own distinct programs), but assertion in framework catches double-registration |
+
+## What PRP-02 proves
+
+Two-week shipment of a first vertical on top of PRP-01 substrate validates the abstraction split. If PRP-02 takes 4+ weeks, the substrate abstractions are wrong and should be revisited before proceeding to PRP-03.
+
+## Next
+
+On gate pass: **PRP-03 (execution + safety)** unlocks — pump.fun gets a write path.
