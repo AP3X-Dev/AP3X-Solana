@@ -142,6 +142,14 @@ export class HttpClient extends EventEmitter {
   private _state: CircuitState = 'closed';
   private _consecutiveFailures = 0;
   private _openedAt = 0;
+  // When `half-open`, at most one probe request may be in flight. This guard
+  // is necessary because `HttpClient` is shared across the RPC pool in
+  // solana-connectivity and concurrent callers both see `half-open` at once.
+  // Without the flag, both would pass `_breakerPreCheck` and we'd violate the
+  // one-probe rule. Set true the moment we transition to `half-open` (or the
+  // moment a second caller arrives while a probe is already running), cleared
+  // in `_recordSuccess` / `_recordFailure`.
+  private _inflightHalfOpenProbe = false;
 
   constructor(opts: HttpClientOptions) {
     super();
@@ -206,7 +214,10 @@ export class HttpClient extends EventEmitter {
     // elapsed, fail fast without even attempting the network.
     const breakerDecision = this._breakerPreCheck();
     if (breakerDecision === 'reject') {
-      const err = new RpcError('http', 'circuit open', { endpoint: path });
+      // `rpc.circuit_open` distinguishes this rejection from a genuine HTTP
+      // failure (`rpc.http`) — callers filtering on `.code` can now tell them
+      // apart without poking at `.meta` or the metrics event.
+      const err = new RpcError('circuit_open', 'circuit open', { endpoint: path });
       this._emitMetrics({
         latencyMs: this._now() - startedAt,
         retryCount: 0,
@@ -263,11 +274,14 @@ export class HttpClient extends EventEmitter {
       // We either got a retryable status or an error. Decide whether to
       // keep going.
       if (response && this._isRetryableStatus(response.status)) {
+        // 429 is classified as `rate_limited` rather than `http` so callers
+        // filtering on `.code` can distinguish a rate-limit from a 5xx.
+        const isRateLimit = response.status === 429;
         lastFailure = {
           kind: 'http',
           statusCode: response.status,
           err: new RpcError(
-            'http',
+            isRateLimit ? 'rate_limited' : 'http',
             `HTTP ${response.status}`,
             { endpoint: url, statusCode: response.status },
           ),
@@ -327,16 +341,29 @@ export class HttpClient extends EventEmitter {
     // Compose the internal abort signal with any caller-provided signal.
     // Use `AbortSignal.any` when available (Node 20.3+); otherwise wire up
     // a manual listener.
+    //
+    // Leak avoidance: in the fallback path we attach a listener to the
+    // caller's signal. `{ once: true }` only fires+removes if the caller
+    // *actually* aborts. On the much more common happy path (fetch resolves
+    // or fails without caller abort) the listener would persist on the
+    // caller's signal forever. Since caller signals are frequently shared
+    // across many requests (one `AbortController` driving a whole session),
+    // that would leak listeners unboundedly. We capture the listener in a
+    // local and explicitly `removeEventListener` in the `finally`.
     let signal: AbortSignal;
     const callerSignal = init?.signal ?? undefined;
     const anyCtor = (AbortSignal as unknown as { any?: (s: AbortSignal[]) => AbortSignal }).any;
+    let callerAbortListener: (() => void) | undefined;
     if (callerSignal) {
       if (typeof anyCtor === 'function') {
         signal = anyCtor([internal.signal, callerSignal]);
       } else {
-        // Manual compose: abort internal when caller aborts.
-        if (callerSignal.aborted) internal.abort(callerSignal.reason);
-        else callerSignal.addEventListener('abort', () => internal.abort(callerSignal.reason), { once: true });
+        if (callerSignal.aborted) {
+          internal.abort(callerSignal.reason);
+        } else {
+          callerAbortListener = () => internal.abort(callerSignal.reason);
+          callerSignal.addEventListener('abort', callerAbortListener, { once: true });
+        }
         signal = internal.signal;
       }
     } else {
@@ -364,6 +391,11 @@ export class HttpClient extends EventEmitter {
       throw err;
     } finally {
       clearTimeout(timer);
+      if (callerSignal && callerAbortListener) {
+        // `{ once: true }` already removed the listener if it fired; removing
+        // again is a no-op, so this is safe regardless of path taken.
+        callerSignal.removeEventListener('abort', callerAbortListener);
+      }
     }
   }
 
@@ -423,14 +455,25 @@ export class HttpClient extends EventEmitter {
    * circuit is open and still cooling down — the caller should fail fast.
    * Otherwise transitions into `half-open` (from `open`) or leaves us in
    * `closed` and returns `'allow'`.
+   *
+   * In `half-open` state, only ONE probe may be in flight at a time. If a
+   * probe is already running (another caller won the race), this returns
+   * `'reject'` just like an open circuit — preserving the one-probe rule
+   * under concurrent usage.
    */
   private _breakerPreCheck(): 'allow' | 'reject' {
     if (!this.breaker) return 'allow';
     if (this._state === 'closed') return 'allow';
-    if (this._state === 'half-open') return 'allow';
+    if (this._state === 'half-open') {
+      if (this._inflightHalfOpenProbe) return 'reject';
+      this._inflightHalfOpenProbe = true;
+      return 'allow';
+    }
     // Open — check recovery window.
     if (this._now() - this._openedAt >= this.breaker.recoveryMs) {
       this._transitionTo('half-open');
+      // We're the probe — reserve the single slot.
+      this._inflightHalfOpenProbe = true;
       return 'allow';
     }
     return 'reject';
@@ -442,6 +485,7 @@ export class HttpClient extends EventEmitter {
       this._transitionTo('closed');
     }
     this._consecutiveFailures = 0;
+    this._inflightHalfOpenProbe = false;
   }
 
   private _recordFailure(): void {
@@ -451,6 +495,7 @@ export class HttpClient extends EventEmitter {
       this._openedAt = this._now();
       this._transitionTo('open');
       this._consecutiveFailures = 0;
+      this._inflightHalfOpenProbe = false;
       return;
     }
     this._consecutiveFailures += 1;
@@ -461,6 +506,7 @@ export class HttpClient extends EventEmitter {
       this._openedAt = this._now();
       this._transitionTo('open');
     }
+    this._inflightHalfOpenProbe = false;
   }
 
   private _transitionTo(next: CircuitState): void {

@@ -369,6 +369,31 @@ describe('HttpClient — retry', () => {
     expect(d.delays[0]).toBe(2000);
   });
 
+  it('exhausted 429 retries throw RpcError with code rpc.rate_limited', async () => {
+    let hits = 0;
+    server.use(
+      http.get('http://test.local/still-throttled', () => {
+        hits += 1;
+        return new HttpResponse('nope', { status: 429 });
+      }),
+    );
+    const d = mkDelayRecorder();
+    const c = new HttpClient({
+      timeoutMs: 1_000,
+      baseUrl: 'http://test.local',
+      retry: { attempts: 2, backoffMs: 1, jitter: 0 },
+      delay: d.delay,
+      random: () => 0,
+    });
+    // A persistent 429 is a rate-limit problem, not a generic HTTP failure —
+    // callers filtering on `.code` can react specifically.
+    await expect(c.get('/still-throttled')).rejects.toMatchObject({
+      code: 'rpc.rate_limited',
+      meta: expect.objectContaining({ statusCode: 429 }),
+    });
+    expect(hits).toBe(2);
+  });
+
   it('applies multiplicative jitter: delay * (1 + random() * jitter)', async () => {
     let hits = 0;
     server.use(
@@ -420,7 +445,69 @@ describe('HttpClient — timeout', () => {
     const ctrl = new AbortController();
     const p = c.get('/hang2', { signal: ctrl.signal });
     setTimeout(() => ctrl.abort(), 10);
-    await expect(p).rejects.toBeDefined();
+    // Caller-driven abort must NOT surface as a TimeoutError — the internal
+    // timeout of 10s has nowhere near elapsed, and the caller's signal won.
+    // The propagated error should look like a native AbortError (DOMException
+    // with `.name === 'AbortError'`), not our TimeoutError wrapper.
+    const caught = await p.catch((e) => e);
+    expect(caught).not.toBeInstanceOf(TimeoutError);
+    expect((caught as { name?: string }).name).toBe('AbortError');
+  });
+
+  // -------------------------------------------------------------------------
+  // Listener-leak regression: the fallback compose path (used when
+  // AbortSignal.any is unavailable) adds a listener to the caller's signal
+  // via `{ once: true }`. That only auto-removes if the caller *actually*
+  // aborts — on the happy path the listener would persist. Caller signals
+  // are commonly shared across many requests, so a leak here grows the
+  // listener count unboundedly.
+  //
+  // We patch the runtime AbortSignal.any to undefined for this test to force
+  // the fallback path, then assert listeners added during fetch are removed
+  // afterwards.
+  // -------------------------------------------------------------------------
+
+  it('does not leak caller-signal listeners across many successful requests', async () => {
+    server.use(
+      http.get('http://test.local/leak', () => new HttpResponse('ok', { status: 200 })),
+    );
+    // Force the fallback compose path regardless of Node version.
+    const originalAny = (AbortSignal as unknown as { any?: unknown }).any;
+    (AbortSignal as unknown as { any?: unknown }).any = undefined;
+    try {
+      const c = new HttpClient({ timeoutMs: 1_000, baseUrl: 'http://test.local' });
+      const ctrl = new AbortController();
+
+      // Spy on add/remove to confirm each add is paired with a remove.
+      let adds = 0;
+      let removes = 0;
+      type AnyListener = (...args: unknown[]) => unknown;
+      const signal = ctrl.signal as unknown as {
+        addEventListener: (t: string, l: AnyListener, o?: unknown) => void;
+        removeEventListener: (t: string, l: AnyListener, o?: unknown) => void;
+      };
+      const origAdd = signal.addEventListener.bind(signal);
+      const origRemove = signal.removeEventListener.bind(signal);
+      signal.addEventListener = (t, l, o) => {
+        if (t === 'abort') adds += 1;
+        return origAdd(t, l, o);
+      };
+      signal.removeEventListener = (t, l, o) => {
+        if (t === 'abort') removes += 1;
+        return origRemove(t, l, o);
+      };
+
+      for (let i = 0; i < 20; i++) {
+        const res = await c.get('/leak', { signal: ctrl.signal });
+        expect(res.status).toBe(200);
+      }
+
+      // Every add should be matched by a remove — no net listener growth.
+      expect(adds).toBe(20);
+      expect(removes).toBe(20);
+    } finally {
+      (AbortSignal as unknown as { any?: unknown }).any = originalAny;
+    }
   });
 });
 
@@ -453,7 +540,7 @@ describe('HttpClient — circuit breaker', () => {
     await expect(c.get('/cb1')).rejects.toBeDefined();
     // Third call — circuit should be open, no server hit.
     await expect(c.get('/cb1')).rejects.toMatchObject({
-      code: 'rpc.http',
+      code: 'rpc.circuit_open',
       message: expect.stringContaining('circuit'),
     });
     expect(hits).toBe(2);
@@ -535,6 +622,170 @@ describe('HttpClient — circuit breaker', () => {
 
     // Immediately after re-open, a follow-up call is rejected without a hit.
     await expect(c.get('/cb3')).rejects.toMatchObject({
+      message: expect.stringContaining('circuit'),
+    });
+    expect(hits).toBe(3);
+  });
+
+  // -------------------------------------------------------------------------
+  // Half-open concurrency — only ONE probe may be in flight at a time.
+  // -------------------------------------------------------------------------
+  //
+  // `HttpClient` is shared across the RPC pool, so two concurrent callers can
+  // both observe the half-open state. Without the `_inflightHalfOpenProbe`
+  // guard, both would pass `_breakerPreCheck` and hit the network, violating
+  // the one-probe rule.
+
+  it('rejects concurrent half-open probe with circuit-open error', async () => {
+    let hits = 0;
+    // A latch we can release manually so the first probe holds the slot while
+    // a second request arrives.
+    let releaseFirst!: (r: Response) => void;
+    const firstResponse = new Promise<Response>((resolve) => {
+      releaseFirst = resolve;
+    });
+    server.use(
+      http.get('http://test.local/cbc1', async () => {
+        hits += 1;
+        // Only the first (probe) request awaits the latch; subsequent ones
+        // never reach here because the circuit should reject them.
+        return await firstResponse;
+      }),
+    );
+    const clock = mkClock(1000);
+    const d = mkDelayRecorder();
+    const c = new HttpClient({
+      timeoutMs: 5_000,
+      baseUrl: 'http://test.local',
+      circuitBreaker: { failureThreshold: 2, recoveryMs: 500 },
+      now: clock.now,
+      delay: d.delay,
+      random: () => 0,
+    });
+    // Force the breaker into `open` first.
+    server.use(
+      http.get('http://test.local/seed', () => new HttpResponse('x', { status: 500 })),
+    );
+    await expect(c.get('/seed')).rejects.toBeDefined();
+    await expect(c.get('/seed')).rejects.toBeDefined();
+    // Advance past recovery so the next call will transition open → half-open.
+    clock.advance(600);
+
+    // Kick off the probe (hits the latched handler, stays in flight).
+    const probePromise = c.get('/cbc1');
+    // Give the microtask queue one tick so the probe enters `_fetchOnce` and
+    // the inflight flag is set.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // A second caller while the probe is in flight must be rejected by the
+    // circuit — no additional server hit.
+    await expect(c.get('/cbc1')).rejects.toMatchObject({
+      code: 'rpc.circuit_open',
+      message: expect.stringContaining('circuit'),
+    });
+    expect(hits).toBe(1);
+
+    // Now release the probe with a success so the test can finish cleanly.
+    releaseFirst(new HttpResponse('ok', { status: 200 }));
+    const res = await probePromise;
+    expect(res.status).toBe(200);
+    expect(hits).toBe(1);
+  });
+
+  it('half-open probe success closes the circuit and clears the inflight flag', async () => {
+    let hits = 0;
+    let failMode = true;
+    server.use(
+      http.get('http://test.local/cbc2', () => {
+        hits += 1;
+        if (failMode) return new HttpResponse('x', { status: 500 });
+        return new HttpResponse('ok', { status: 200 });
+      }),
+    );
+    const clock = mkClock(1000);
+    const d = mkDelayRecorder();
+    const c = new HttpClient({
+      timeoutMs: 1_000,
+      baseUrl: 'http://test.local',
+      circuitBreaker: { failureThreshold: 2, recoveryMs: 500 },
+      now: clock.now,
+      delay: d.delay,
+      random: () => 0,
+    });
+    // Open the breaker.
+    await expect(c.get('/cbc2')).rejects.toBeDefined();
+    await expect(c.get('/cbc2')).rejects.toBeDefined();
+    clock.advance(600);
+    failMode = false;
+
+    // Successful probe (closes the circuit).
+    expect((await c.get('/cbc2')).status).toBe(200);
+    // Inflight flag must be cleared now — subsequent requests proceed normally
+    // in the `closed` state. Fire a few and assert they all hit the server.
+    for (let i = 0; i < 3; i++) {
+      expect((await c.get('/cbc2')).status).toBe(200);
+    }
+    // 2 initial failures + 1 probe + 3 follow-ups = 6 server hits.
+    expect(hits).toBe(6);
+  });
+
+  it('circuit-open rejection throws RpcError with code rpc.circuit_open', async () => {
+    server.use(
+      http.get('http://test.local/cbcode', () => new HttpResponse('x', { status: 500 })),
+    );
+    const clock = mkClock(0);
+    const d = mkDelayRecorder();
+    const c = new HttpClient({
+      timeoutMs: 1_000,
+      baseUrl: 'http://test.local',
+      circuitBreaker: { failureThreshold: 1, recoveryMs: 10_000 },
+      now: clock.now,
+      delay: d.delay,
+      random: () => 0,
+    });
+    // One failure opens the circuit.
+    await expect(c.get('/cbcode')).rejects.toMatchObject({ code: 'rpc.http' });
+    // Next call is rejected by the breaker with a distinct `rpc.circuit_open`
+    // code — this is what lets callers distinguish a short-circuit from a
+    // genuine HTTP failure without poking at `.meta`.
+    const err = await c.get('/cbcode').catch((e) => e);
+    expect(err).toBeInstanceOf(RpcError);
+    expect((err as RpcError).code).toBe('rpc.circuit_open');
+    expect((err as RpcError).meta.endpoint).toBe('/cbcode');
+  });
+
+  it('half-open probe failure re-opens and clears the inflight flag', async () => {
+    let hits = 0;
+    server.use(
+      http.get('http://test.local/cbc3', () => {
+        hits += 1;
+        return new HttpResponse('x', { status: 500 });
+      }),
+    );
+    const clock = mkClock(1000);
+    const d = mkDelayRecorder();
+    const c = new HttpClient({
+      timeoutMs: 1_000,
+      baseUrl: 'http://test.local',
+      circuitBreaker: { failureThreshold: 2, recoveryMs: 500 },
+      now: clock.now,
+      delay: d.delay,
+      random: () => 0,
+    });
+    // Open the breaker.
+    await expect(c.get('/cbc3')).rejects.toBeDefined();
+    await expect(c.get('/cbc3')).rejects.toBeDefined();
+    clock.advance(600);
+
+    // Probe fails → circuit re-opens, inflight cleared.
+    await expect(c.get('/cbc3')).rejects.toBeDefined();
+    expect(hits).toBe(3);
+
+    // Subsequent request should get the normal open-state rejection, not be
+    // stuck because of a leaked inflight flag. No network hit expected.
+    await expect(c.get('/cbc3')).rejects.toMatchObject({
+      code: 'rpc.circuit_open',
       message: expect.stringContaining('circuit'),
     });
     expect(hits).toBe(3);

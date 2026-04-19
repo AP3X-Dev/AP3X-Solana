@@ -92,7 +92,8 @@ export type RpcErrorCode =
   | 'rate_limited'
   | 'http'
   | 'rpc_method'
-  | 'parse';
+  | 'parse'
+  | 'circuit_open';
 
 /**
  * Structured metadata for {@link RpcError}. All fields optional because a

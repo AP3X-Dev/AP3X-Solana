@@ -78,12 +78,29 @@ describe('RpcError', () => {
     expect(err.meta).toEqual({});
   });
 
-  it('namespaces all five sub-codes under rpc.<subcode>', () => {
-    const subcodes = ['timeout', 'rate_limited', 'http', 'rpc_method', 'parse'] as const;
+  it('namespaces all six sub-codes under rpc.<subcode>', () => {
+    const subcodes = [
+      'timeout',
+      'rate_limited',
+      'http',
+      'rpc_method',
+      'parse',
+      'circuit_open',
+    ] as const;
     for (const sc of subcodes) {
       const err = new RpcError(sc, 'boom');
       expect(err.code).toBe(`rpc.${sc}`);
     }
+  });
+
+  it('supports circuit_open sub-code for distinguishing breaker rejections', () => {
+    // `circuit_open` separates short-circuited calls (never touched the
+    // network) from genuine HTTP failures — callers filtering on `.code` can
+    // tell them apart without inspecting `.meta`.
+    const err = new RpcError('circuit_open', 'circuit open', { endpoint: '/foo' });
+    expect(err.code).toBe('rpc.circuit_open');
+    expect(err.meta.endpoint).toBe('/foo');
+    expect(err).toBeInstanceOf(RpcError);
   });
 
   it('stores structured meta (endpoint, method, statusCode, rpcCode, retryAfterMs)', () => {
