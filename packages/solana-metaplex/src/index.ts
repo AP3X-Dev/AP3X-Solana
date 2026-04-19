@@ -21,3 +21,8 @@ export type {
   ParsedMetadata,
   ResolvedMetadata,
 } from './resolver';
+
+export { isCollectionMember, verifyCreator } from './collection';
+
+export { defaultCompressedMetadataReader } from './cnft-stub';
+export type { CompressedMetadataReader } from './cnft-stub';
