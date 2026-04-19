@@ -78,21 +78,15 @@ import type { CheckpointStore, Checkpoint } from './checkpoint-store';
 // ---------------------------------------------------------------------------
 
 /**
- * CJS-safe shim around `import.meta.url`. In ESM this returns the module
- * URL; in CJS (`__filename` defined) it returns the absolute path. We
- * extract it behind a typeof guard so esbuild's CJS build doesn't warn
- * about an empty `import.meta`.
+ * CJS-safe shim around `import.meta.url`. In ESM (including tsx) this
+ * returns the module URL; in CJS (`__filename` defined) it returns the
+ * absolute path. The typeof guard keeps the ESM branch unreachable in
+ * CJS, so esbuild's "import.meta is empty in CJS" warning at build time
+ * is benign — the branch is dead code in the CJS output.
  */
 export function resolveCreateRequireBase(): string {
   if (typeof __filename !== 'undefined') return __filename;
-  // ESM path. We read `import.meta.url` through a Function indirection so
-  // esbuild's CJS build doesn't try to substitute the property and emit a
-  // spurious "import.meta is empty in CJS" warning — that branch is
-  // unreachable in CJS (guarded by the `__filename` check above), but
-  // esbuild's static analysis doesn't prove that.
-  // eslint-disable-next-line no-new-func
-  const getMetaUrl = new Function('return import.meta.url') as () => string;
-  return getMetaUrl();
+  return import.meta.url;
 }
 
 /**
