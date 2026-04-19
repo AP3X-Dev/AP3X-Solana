@@ -109,7 +109,10 @@ export type TransactionErrorCode =
   | 'payer_not_in_signers'
   | 'missing_signer'
   | 'invalid_blockhash'
-  | 'no_fee_payer';
+  | 'no_fee_payer'
+  | 'bundle_too_large'
+  | 'bundle_empty'
+  | 'invalid_tip';
 
 /** Structured payload for {@link TransactionError}. */
 export interface TransactionErrorMeta {

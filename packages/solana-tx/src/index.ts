@@ -40,3 +40,10 @@ export type {
   TransactionErrorCode,
   TransactionErrorMeta,
 } from './transaction-assembler';
+
+export {
+  JitoBundleBuilder,
+  JITO_MAX_TXS_PER_BUNDLE,
+  SYSTEM_PROGRAM_ID,
+} from './jito-bundle';
+export type { Bundle } from './jito-bundle';
