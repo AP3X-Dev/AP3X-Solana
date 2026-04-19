@@ -65,6 +65,18 @@ importers:
 
   packages/solana-core: {}
 
+  packages/solana-spl:
+    dependencies:
+      '@ap3x/solana-connectivity':
+        specifier: workspace:*
+        version: link:../solana-connectivity
+      '@ap3x/solana-core':
+        specifier: workspace:*
+        version: link:../solana-core
+      '@ap3x/solana-tx':
+        specifier: workspace:*
+        version: link:../solana-tx
+
   packages/solana-tx:
     dependencies:
       '@ap3x/solana-connectivity':

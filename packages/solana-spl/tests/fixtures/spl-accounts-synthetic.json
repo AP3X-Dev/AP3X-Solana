@@ -1,0 +1,170 @@
+[
+  {
+    "kind": "mint",
+    "label": "mint-standard",
+    "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "tokenProgram": "spl-v1",
+    "dataBase64": "AQAAAIyXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZAMqaOwAAAAAGAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+    "expected": {
+      "mintAuthority": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+      "supply": "1000000000",
+      "decimals": 6,
+      "isInitialized": true,
+      "freezeAuthority": "11111111111111111111111111111111",
+      "tokenProgram": "spl-v1"
+    }
+  },
+  {
+    "kind": "mint",
+    "label": "mint-revoked-mint-authority",
+    "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "tokenProgram": "spl-v1",
+    "dataBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGXNHQAAAAAJAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+    "expected": {
+      "mintAuthority": null,
+      "supply": "500000000",
+      "decimals": 9,
+      "isInitialized": true,
+      "freezeAuthority": "11111111111111111111111111111111",
+      "tokenProgram": "spl-v1"
+    }
+  },
+  {
+    "kind": "mint",
+    "label": "mint-revoked-freeze-authority",
+    "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "tokenProgram": "spl-v1",
+    "dataBase64": "AQAAAIyXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZFc1bBwAAAAACAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+    "expected": {
+      "mintAuthority": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+      "supply": "123456789",
+      "decimals": 2,
+      "isInitialized": true,
+      "freezeAuthority": null,
+      "tokenProgram": "spl-v1"
+    }
+  },
+  {
+    "kind": "mint",
+    "label": "mint-token-2022",
+    "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "tokenProgram": "token-2022",
+    "dataBase64": "AQAAAIyXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZECcAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+    "expected": {
+      "mintAuthority": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+      "supply": "10000",
+      "decimals": 0,
+      "isInitialized": true,
+      "freezeAuthority": null,
+      "tokenProgram": "token-2022"
+    }
+  },
+  {
+    "kind": "account",
+    "label": "account-standard-initialized-delegated",
+    "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "tokenProgram": "spl-v1",
+    "dataBase64": "xvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWEEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTj4DegAIAAAAAAQAAAAtwZbHj0XxFOJ1Sf2sEw81YuGxzGqD9tUm20bwD+ClGAQAAAAAAAAAAAAAAAICWmAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "expected": {
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "owner": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+      "amount": "42000000",
+      "delegate": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+      "state": "initialized",
+      "isNative": null,
+      "delegatedAmount": "10000000",
+      "closeAuthority": null,
+      "tokenProgram": "spl-v1"
+    }
+  },
+  {
+    "kind": "account",
+    "label": "account-frozen",
+    "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "tokenProgram": "spl-v1",
+    "dataBase64": "xvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWEEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTjwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "expected": {
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "owner": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+      "amount": "0",
+      "delegate": null,
+      "state": "frozen",
+      "isNative": null,
+      "delegatedAmount": "0",
+      "closeAuthority": null,
+      "tokenProgram": "spl-v1"
+    }
+  },
+  {
+    "kind": "account",
+    "label": "account-native-wsol",
+    "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "tokenProgram": "spl-v1",
+    "dataBase64": "BpuIV/6rgYT7aH9jRhjANdrEOdwa6ztVmKDwAAAAAAEGm4hX/quBhPtof2NGGMA12sQ53BrrO1WYoPAAAAAAAQDyBSoBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQEAAADwHR8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "expected": {
+      "mint": "So11111111111111111111111111111111111111112",
+      "owner": "So11111111111111111111111111111111111111112",
+      "amount": "5000000000",
+      "delegate": null,
+      "state": "initialized",
+      "isNative": "2039280",
+      "delegatedAmount": "0",
+      "closeAuthority": null,
+      "tokenProgram": "spl-v1"
+    }
+  },
+  {
+    "kind": "account",
+    "label": "account-uninitialized",
+    "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "tokenProgram": "spl-v1",
+    "dataBase64": "zgEOYK/tsicXvWMZL1QUWj+WWjO7gtLHAp6yzh4ggmQGm4hX/quBhPtof2NGGMA12sQ53BrrO1WYoPAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "expected": {
+      "mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      "owner": "So11111111111111111111111111111111111111112",
+      "amount": "0",
+      "delegate": null,
+      "state": "uninitialized",
+      "isNative": null,
+      "delegatedAmount": "0",
+      "closeAuthority": null,
+      "tokenProgram": "spl-v1"
+    }
+  },
+  {
+    "kind": "account",
+    "label": "account-delegated-with-amount",
+    "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "tokenProgram": "spl-v1",
+    "dataBase64": "zgEOYK/tsicXvWMZL1QUWj+WWjO7gtLHAp6yzh4ggmQEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTj//JmjsAAAAAAQAAAAtwZbHj0XxFOJ1Sf2sEw81YuGxzGqD9tUm20bwD+ClGAQAAAAAAAAAAAAAAAP/JmjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "expected": {
+      "mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      "owner": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+      "amount": "999999999",
+      "delegate": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+      "state": "initialized",
+      "isNative": null,
+      "delegatedAmount": "999999999",
+      "closeAuthority": null,
+      "tokenProgram": "spl-v1"
+    }
+  },
+  {
+    "kind": "account",
+    "label": "account-with-close-authority",
+    "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "tokenProgram": "spl-v1",
+    "dataBase64": "xvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWEEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTjwEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAR51VvyMcBu7nTFbs5oFQf9sbLeo/SOUQKxzaJWvBOP",
+    "expected": {
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "owner": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+      "amount": "1",
+      "delegate": null,
+      "state": "initialized",
+      "isNative": null,
+      "delegatedAmount": "0",
+      "closeAuthority": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+      "tokenProgram": "spl-v1"
+    }
+  }
+]
