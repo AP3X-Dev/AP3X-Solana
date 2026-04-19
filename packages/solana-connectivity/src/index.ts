@@ -26,3 +26,5 @@ export type {
   GrpcDuplexStream,
 } from './geyser-client';
 export type { Checkpoint, CheckpointStore } from './checkpoint-store';
+export { FileCheckpointStore } from './checkpoint-store-file';
+export type { FileCheckpointStoreOptions } from './checkpoint-store-file';
