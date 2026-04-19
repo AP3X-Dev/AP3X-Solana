@@ -12,6 +12,9 @@
       "require": "./dist/index.cjs"
     }
   },
+  "bin": {
+    "ap3x-solana-diag": "./dist/diag/cli.cjs"
+  },
   "files": [
     "dist",
     "README.md"
@@ -21,11 +24,15 @@
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "lint": "eslint src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "diag": "tsx src/diag/cli.ts"
   },
   "dependencies": {
     "@ap3x/solana-core": "workspace:*",
     "@grpc/grpc-js": "^1.11.0",
     "@grpc/proto-loader": "^0.7.13"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
   }
 }
