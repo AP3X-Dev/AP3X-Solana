@@ -12,3 +12,11 @@ export type {
   AddressLookupTable,
   AltCoverage,
 } from './address-lookup-table';
+
+export {
+  PriorityFeeEstimator,
+  WARMUP_DEFAULTS,
+  SIGNATURE_FEE_LAMPORTS,
+  quantile,
+} from './priority-fee';
+export type { FeeTier, PriorityFeeEstimatorOptions } from './priority-fee';
