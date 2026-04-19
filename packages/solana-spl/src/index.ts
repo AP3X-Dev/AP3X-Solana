@@ -33,3 +33,22 @@ export type {
   TransferFee,
   DecodedExtensions,
 } from './token-2022-extensions';
+
+export {
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountIx,
+  createAssociatedTokenAccountNonIdempotentIx,
+} from './ata';
+export type { AccountMeta, Instruction } from './ata';
+
+export {
+  getTokenLargestAccounts,
+  getTokenAccountsByMint,
+} from './holder-queries';
+export type {
+  Commitment,
+  RpcPoolLike,
+  LargestAccount,
+  TokenAccountHolding,
+  GetTokenAccountsByMintOptions,
+} from './holder-queries';

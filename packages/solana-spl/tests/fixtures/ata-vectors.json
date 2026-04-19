@@ -1,0 +1,82 @@
+[
+  {
+    "label": "v1-owner-a-wsol",
+    "owner": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+    "mint": "So11111111111111111111111111111111111111112",
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "expectedAddress": "Fr37Gkri7undsm6MiQADnMounZ48VngX8jmH49aTd1bg",
+    "expectedBump": 253
+  },
+  {
+    "label": "v1-owner-b-wsol",
+    "owner": "HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH",
+    "mint": "So11111111111111111111111111111111111111112",
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "expectedAddress": "87ntzPm3L3GRLzpMrR7SDZA85NCsHDAaHNhcezczDRrX",
+    "expectedBump": 255
+  },
+  {
+    "label": "v1-owner-c-wsol",
+    "owner": "4Nd1mMyUBL4Jv5QrG8v5ntb6NTHDNLtEmKJcYkrv2gUa",
+    "mint": "So11111111111111111111111111111111111111112",
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "expectedAddress": "Hb23Gn5niGuq3n5zTpDhqZPrYC1ZP8t1iRrJYiMVF6vn",
+    "expectedBump": 255
+  },
+  {
+    "label": "v1-owner-a-usdc",
+    "owner": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+    "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "expectedAddress": "ALZv1FW3Bc5uRtci2UHnYS34DEWCmfkN5btEYDKms9yU",
+    "expectedBump": 254
+  },
+  {
+    "label": "v1-owner-a-usdt",
+    "owner": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+    "mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "expectedAddress": "FUB3AwADyvY5DtmP5dC25NB8BTdMqBmMggFauWwFkZJS",
+    "expectedBump": 254
+  },
+  {
+    "label": "token2022-owner-b-usdc",
+    "owner": "HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH",
+    "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "expectedAddress": "ApjSgFNZXErFvDS5fS4P2Dhvr76q94rcR4MS1Yx4yvgb",
+    "expectedBump": 254
+  },
+  {
+    "label": "token2022-owner-a-usdt",
+    "owner": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+    "mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "expectedAddress": "C7c8DbyKgAvtniDz3hcmX9cAdokKVmSJh8qmDh11B8sk",
+    "expectedBump": 254
+  },
+  {
+    "label": "v1-system-owner-wsol",
+    "owner": "11111111111111111111111111111111",
+    "mint": "So11111111111111111111111111111111111111112",
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "expectedAddress": "aqxoAhCwpy3oB1BpNw9hL1HdLYLgPpbPjzxDrrQj3Fs",
+    "expectedBump": 254
+  },
+  {
+    "label": "v1-owner-c-usdc",
+    "owner": "4Nd1mMyUBL4Jv5QrG8v5ntb6NTHDNLtEmKJcYkrv2gUa",
+    "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "expectedAddress": "CRwESwdTZU8mgeiM3fGRoucYd5PGCXxLCTSSXRUANPXW",
+    "expectedBump": 255
+  },
+  {
+    "label": "v1-owner-b-usdt",
+    "owner": "HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH",
+    "mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "expectedAddress": "xyvjjb3mvX9CyJihJq8ncAHe8HdcYEGNx3k7qj7GeaD",
+    "expectedBump": 255
+  }
+]
