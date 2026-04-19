@@ -13,3 +13,6 @@ export type {
   ProgramDecoder,
   UnknownEventDecode,
 } from './registry';
+
+export { walkInvocations } from './cpi-decoder';
+export type { InvocationWalkStep } from './cpi-decoder';
