@@ -81,11 +81,17 @@ describe('decodeMint', () => {
         );
       }
 
-      // T24 doesn't populate extensions / unknownExtensions even on
-      // Token-2022 mints — that's T25's job. Just verify the fields stay
-      // undefined here.
-      expect(mint.extensions).toBeUndefined();
-      expect(mint.unknownExtensions).toBeUndefined();
+      if (fx.expected.tokenProgram === 'token-2022') {
+        // Token-2022 mints always route through the extensions decoder.
+        // These fixtures are bare (no TLV region), so we expect empty
+        // extensions and no unknown entries — but the fields must exist.
+        expect(mint.extensions).toEqual({});
+        expect(mint.unknownExtensions).toEqual([]);
+      } else {
+        // v1 mints never populate extensions — they don't have them at all.
+        expect(mint.extensions).toBeUndefined();
+        expect(mint.unknownExtensions).toBeUndefined();
+      }
     });
   }
 
@@ -131,5 +137,8 @@ describe('decodeMint', () => {
     const data = dataFromBase64(fx.dataBase64);
     const mint = decodeMint({ data, owner: TOKEN_2022_PROGRAM_ID });
     expect(mint.tokenProgram).toBe('token-2022');
+    // Extensions decoder runs — with no TLV region, result is empty.
+    expect(mint.extensions).toEqual({});
+    expect(mint.unknownExtensions).toEqual([]);
   });
 });

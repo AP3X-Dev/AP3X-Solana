@@ -8,16 +8,28 @@ export {
 export type { AccountInfo, TokenProgramKind } from './program-ids';
 
 export { decodeMint, readCOptionPubkey, MINT_ACCOUNT_SIZE } from './mint';
-export type {
-  TokenMint,
-  TokenMintExtensionsLike,
-  UnknownMintExtension,
-} from './mint';
+export type { TokenMint } from './mint';
 
 export { decodeTokenAccount, TOKEN_ACCOUNT_SIZE } from './token-account';
+export type { TokenAccount, TokenAccountState } from './token-account';
+
+export {
+  decodeExtensions,
+  decodeAccountExtensions,
+  EXTENSION_TYPE,
+  ACCOUNT_TYPE_OFFSET,
+  ACCOUNT_TYPE_MINT,
+  ACCOUNT_TYPE_ACCOUNT,
+  ACCOUNT_TYPE_UNINITIALIZED,
+  TLV_START_OFFSET,
+} from './token-2022-extensions';
 export type {
-  TokenAccount,
-  TokenAccountState,
-  TokenAccountExtensionsLike,
-  UnknownTokenAccountExtension,
-} from './token-account';
+  UnknownExtension,
+  TokenMintExtensions,
+  TokenAccountExtensions,
+  MintCloseAuthorityExt,
+  TransferFeeConfigExt,
+  DefaultAccountStateExt,
+  TransferFee,
+  DecodedExtensions,
+} from './token-2022-extensions';

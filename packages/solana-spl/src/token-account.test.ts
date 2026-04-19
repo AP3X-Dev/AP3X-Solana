@@ -86,8 +86,13 @@ describe('decodeTokenAccount', () => {
         );
       }
 
-      expect(acc.extensions).toBeUndefined();
-      expect(acc.unknownExtensions).toBeUndefined();
+      if (fx.expected.tokenProgram === 'token-2022') {
+        expect(acc.extensions).toEqual({});
+        expect(acc.unknownExtensions).toEqual([]);
+      } else {
+        expect(acc.extensions).toBeUndefined();
+        expect(acc.unknownExtensions).toBeUndefined();
+      }
     });
   }
 
@@ -131,5 +136,9 @@ describe('decodeTokenAccount', () => {
     const data = dataFromBase64(fx.dataBase64);
     const acc = decodeTokenAccount({ data, owner: TOKEN_2022_PROGRAM_ID });
     expect(acc.tokenProgram).toBe('token-2022');
+    // Bare 165-byte account — no TLV region, but extensions decoder still
+    // populates empty placeholders.
+    expect(acc.extensions).toEqual({});
+    expect(acc.unknownExtensions).toEqual([]);
   });
 });

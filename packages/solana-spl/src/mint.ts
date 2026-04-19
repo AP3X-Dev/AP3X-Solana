@@ -38,25 +38,14 @@ import {
   type AccountInfo,
   type TokenProgramKind,
 } from './program-ids';
+import {
+  decodeExtensions,
+  type TokenMintExtensions,
+  type UnknownExtension,
+} from './token-2022-extensions';
 
 /** Minimum valid SPL mint data length, in bytes. */
 export const MINT_ACCOUNT_SIZE = 82;
-
-/**
- * Known Token-2022 mint-side extension values. Populated by
- * {@link ./token-2022-extensions} — the interface lives in that file; we
- * re-export a stub here so T24 doesn't take a hard dependency on the
- * extensions module. In T24, {@link decodeMint} never populates this field.
- */
-export type TokenMintExtensionsLike = Record<string, unknown>;
-
-/** A TLV entry we couldn't decode into a known extension shape. */
-export interface UnknownMintExtension {
-  /** Extension type ID (u16). */
-  type: number;
-  /** Raw extension payload bytes. */
-  data: Uint8Array;
-}
 
 /**
  * Decoded SPL Token Mint. Authority fields are `null` when the SPL
@@ -86,16 +75,17 @@ export interface TokenMint {
   /** Which SPL Token flavour owns the account (`detectTokenProgram`). */
   tokenProgram: TokenProgramKind;
   /**
-   * Known Token-2022 extension values. Only populated by the extensions
-   * module ({@link ./token-2022-extensions}); absent when the caller uses
-   * only the base decoder or when the account is `spl-v1`.
+   * Known Token-2022 extension values decoded from the TLV region. Only
+   * populated when `tokenProgram === 'token-2022'` AND the account has a
+   * TLV region (data length > 165). An empty object means "Token-2022 mint
+   * with a TLV region that contained no recognized extensions".
    */
-  extensions?: TokenMintExtensionsLike;
+  extensions?: TokenMintExtensions;
   /**
    * TLV entries we couldn't decode into {@link extensions}. Same population
-   * rules as {@link extensions}.
+   * rules. Empty array = "TLV region present, all entries recognized".
    */
-  unknownExtensions?: UnknownMintExtension[];
+  unknownExtensions?: UnknownExtension[];
 }
 
 /**
@@ -146,7 +136,7 @@ export function decodeMint(account: AccountInfo): TokenMint {
 
   const tokenProgram = detectTokenProgram(account);
 
-  return {
+  const out: TokenMint = {
     mintAuthority,
     supply,
     decimals,
@@ -154,4 +144,16 @@ export function decodeMint(account: AccountInfo): TokenMint {
     freezeAuthority,
     tokenProgram,
   };
+
+  // Token-2022 mints may carry a TLV extension region after the base
+  // layout. The extensions module handles the "too-short-for-extensions"
+  // case internally; we always hand it the full data slice when the
+  // program matches.
+  if (tokenProgram === 'token-2022') {
+    const decoded = decodeExtensions(account.data, 'mint');
+    out.extensions = decoded.extensions;
+    out.unknownExtensions = decoded.unknownExtensions;
+  }
+
+  return out;
 }

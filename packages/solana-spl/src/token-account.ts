@@ -38,6 +38,11 @@ import {
   type TokenProgramKind,
 } from './program-ids';
 import { readCOptionPubkey } from './mint';
+import {
+  decodeExtensions,
+  type TokenAccountExtensions,
+  type UnknownExtension,
+} from './token-2022-extensions';
 
 /** Fixed SPL token account data length, in bytes. */
 export const TOKEN_ACCOUNT_SIZE = 165;
@@ -51,20 +56,6 @@ export const TOKEN_ACCOUNT_SIZE = 165;
  * freeze authority has frozen it and transfers out are disallowed.
  */
 export type TokenAccountState = 'uninitialized' | 'initialized' | 'frozen';
-
-/**
- * Known Token-2022 account-side extension values. Populated by
- * {@link ./token-2022-extensions}; T24 never fills this field.
- */
-export type TokenAccountExtensionsLike = Record<string, unknown>;
-
-/** A TLV entry we couldn't decode into a known account extension shape. */
-export interface UnknownTokenAccountExtension {
-  /** Extension type ID (u16). */
-  type: number;
-  /** Raw extension payload bytes. */
-  data: Uint8Array;
-}
 
 /**
  * Decoded SPL Token Account. All `COption<Pubkey>` fields become `null`
@@ -95,16 +86,17 @@ export interface TokenAccount {
   /** Which SPL Token flavour owns the account (`detectTokenProgram`). */
   tokenProgram: TokenProgramKind;
   /**
-   * Known Token-2022 extension values. Only populated by the extensions
-   * module; absent otherwise. Empty object means "Token-2022 account with no
-   * recognized extensions".
+   * Known Token-2022 extension values. Only populated when
+   * `tokenProgram === 'token-2022'` AND the account has a TLV region
+   * (data length > 165). T25 does not decode any account-side extensions
+   * to structured shapes; this object is currently always empty.
    */
-  extensions?: TokenAccountExtensionsLike;
+  extensions?: TokenAccountExtensions;
   /**
-   * TLV entries we couldn't decode into {@link extensions}. Same population
-   * rules.
+   * TLV entries we couldn't decode into {@link extensions}. All
+   * account-side extensions surface here in T25.
    */
-  unknownExtensions?: UnknownTokenAccountExtension[];
+  unknownExtensions?: UnknownExtension[];
 }
 
 /**
@@ -166,7 +158,7 @@ export function decodeTokenAccount(account: AccountInfo): TokenAccount {
 
   const tokenProgram = detectTokenProgram(account);
 
-  return {
+  const out: TokenAccount = {
     mint,
     owner,
     amount,
@@ -177,4 +169,15 @@ export function decodeTokenAccount(account: AccountInfo): TokenAccount {
     closeAuthority,
     tokenProgram,
   };
+
+  // Token-2022 accounts may carry a TLV extension region starting after
+  // byte 165. T25 doesn't structurally decode any account-side extensions
+  // yet — they all surface as entries in `unknownExtensions`.
+  if (tokenProgram === 'token-2022') {
+    const decoded = decodeExtensions(account.data, 'account');
+    out.extensions = decoded.extensions;
+    out.unknownExtensions = decoded.unknownExtensions;
+  }
+
+  return out;
 }
