@@ -1,3 +1,6 @@
 packages:
-  - 'packages/*'
-  - 'examples/*'
+  - packages/*
+  - examples/*
+
+patchedDependencies:
+  libsodium-wrappers-sumo@0.7.16: patches/libsodium-wrappers-sumo@0.7.16.patch
