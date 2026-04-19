@@ -21,5 +21,3 @@ secrets/
 *.swo
 
 .worktrees/
-
-docs/superpowers/advisor-log-*.md
