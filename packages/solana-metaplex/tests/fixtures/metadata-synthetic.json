@@ -1,0 +1,278 @@
+[
+  {
+    "label": "v1-bare",
+    "note": "Base Data struct + primary_sale + mutable; no edition_nonce, no v1.3 block.",
+    "dataBase64": "BAtwZbHj0XxFOJ1Sf2sEw81YuGxzGqD9tUm20bwD+ClGxvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWELAAAAQmFyZSB2MSBORlQEAAAAQkFSRSAAAABodHRwczovL2V4YW1wbGUuY29tL2JhcmUtdjEuanNvbvQBAAAB",
+    "expected": {
+      "version": "v1",
+      "key": 4,
+      "updateAuthority": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "name": "Bare v1 NFT",
+      "symbol": "BARE",
+      "uri": "https://example.com/bare-v1.json",
+      "sellerFeeBasisPoints": 500,
+      "creators": null,
+      "primarySaleHappened": false,
+      "isMutable": true,
+      "editionNonce": null,
+      "tokenStandard": null,
+      "collection": null,
+      "uses": null,
+      "collectionDetails": null
+    }
+  },
+  {
+    "label": "v1-puffed-strings",
+    "note": "Older program emitted zero-padded name/symbol/uri; decoder strips the padding.",
+    "dataBase64": "BAtwZbHj0XxFOJ1Sf2sEw81YuGxzGqD9tUm20bwD+ClGBpuIV/6rgYT7aH9jRhjANdrEOdwa6ztVmKDwAAAAAAEgAAAAUHVmZmVkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKAAAAUFVGAAAAAAAAAMgAAABodHRwczovL2V4YW1wbGUuY29tL3B1ZmZlZC5qc29uAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPoAAAEA",
+    "expected": {
+      "version": "v1",
+      "key": 4,
+      "updateAuthority": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+      "mint": "So11111111111111111111111111111111111111112",
+      "name": "Puffed",
+      "symbol": "PUF",
+      "uri": "https://example.com/puffed.json",
+      "sellerFeeBasisPoints": 250,
+      "creators": null,
+      "primarySaleHappened": true,
+      "isMutable": false,
+      "editionNonce": null,
+      "tokenStandard": null,
+      "collection": null,
+      "uses": null,
+      "collectionDetails": null
+    }
+  },
+  {
+    "label": "v13-collection-verified",
+    "note": "TokenStandard=NonFungible + verified collection; uses=None; no collectionDetails.",
+    "dataBase64": "BAtwZbHj0XxFOJ1Sf2sEw81YuGxzGqD9tUm20bwD+ClGxvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWEOAAAAQ29sbGVjdGlvbiBORlQEAAAAQ09MTB0AAABodHRwczovL2V4YW1wbGUuY29tL2NvbGwuanNvbmQAAAABAf4BAAEBBt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkA",
+    "expected": {
+      "version": "v1.3",
+      "key": 4,
+      "updateAuthority": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "name": "Collection NFT",
+      "symbol": "COLL",
+      "uri": "https://example.com/coll.json",
+      "sellerFeeBasisPoints": 100,
+      "creators": null,
+      "primarySaleHappened": false,
+      "isMutable": true,
+      "editionNonce": 254,
+      "tokenStandard": "NonFungible",
+      "collection": {
+        "verified": true,
+        "key": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      },
+      "uses": null,
+      "collectionDetails": null
+    }
+  },
+  {
+    "label": "v13-creators-and-uses",
+    "note": "Unverified creators, Uses.Multiple remaining=5 total=10.",
+    "dataBase64": "BAtwZbHj0XxFOJ1Sf2sEw81YuGxzGqD9tUm20bwD+ClGzgEOYK/tsicXvWMZL1QUWj+WWjO7gtLHAp6yzh4ggmQIAAAAVXNlcyBORlQEAAAAVVNFUx0AAABodHRwczovL2V4YW1wbGUuY29tL3VzZXMuanNvbu4CAQIAAAAEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTjwA8jJclj04kifG7PRApFI4NgwtaE5na/xCEBI572Nvp+FkAKAEBAAEAAAEBBQAAAAAAAAAKAAAAAAAAAA==",
+    "expected": {
+      "version": "v1.3",
+      "key": 4,
+      "updateAuthority": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+      "mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      "name": "Uses NFT",
+      "symbol": "USES",
+      "uri": "https://example.com/uses.json",
+      "sellerFeeBasisPoints": 750,
+      "creators": [
+        {
+          "address": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+          "verified": false,
+          "share": 60
+        },
+        {
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "verified": false,
+          "share": 40
+        }
+      ],
+      "primarySaleHappened": true,
+      "isMutable": true,
+      "editionNonce": null,
+      "tokenStandard": "NonFungible",
+      "collection": null,
+      "uses": {
+        "useMethod": "Multiple",
+        "remaining": "5",
+        "total": "10"
+      },
+      "collectionDetails": null
+    }
+  },
+  {
+    "label": "v1-empty-creators",
+    "note": "Creators present but empty vec; decoder returns [] not null.",
+    "dataBase64": "BAtwZbHj0XxFOJ1Sf2sEw81YuGxzGqD9tUm20bwD+ClGBpuIV/6rgYT7aH9jRhjANdrEOdwa6ztVmKDwAAAAAAEOAAAARW1wdHkgQ3JlYXRvcnMEAAAAWkVSTx0AAABodHRwczovL2V4YW1wbGUuY29tL3plcm8uanNvbgAAAQAAAAAAAQ==",
+    "expected": {
+      "version": "v1",
+      "key": 4,
+      "updateAuthority": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+      "mint": "So11111111111111111111111111111111111111112",
+      "name": "Empty Creators",
+      "symbol": "ZERO",
+      "uri": "https://example.com/zero.json",
+      "sellerFeeBasisPoints": 0,
+      "creators": [],
+      "primarySaleHappened": false,
+      "isMutable": true,
+      "editionNonce": null,
+      "tokenStandard": null,
+      "collection": null,
+      "uses": null,
+      "collectionDetails": null
+    }
+  },
+  {
+    "label": "v1-null-creators",
+    "note": "Creators COption tag = 0 (truly absent, not empty).",
+    "dataBase64": "BAtwZbHj0XxFOJ1Sf2sEw81YuGxzGqD9tUm20bwD+ClGxvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWENAAAATnVsbCBDcmVhdG9ycwQAAABOVUxMHQAAAGh0dHBzOi8vZXhhbXBsZS5jb20vbnVsbC5qc29uAAAAAAE=",
+    "expected": {
+      "version": "v1",
+      "key": 4,
+      "updateAuthority": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "name": "Null Creators",
+      "symbol": "NULL",
+      "uri": "https://example.com/null.json",
+      "sellerFeeBasisPoints": 0,
+      "creators": null,
+      "primarySaleHappened": false,
+      "isMutable": true,
+      "editionNonce": null,
+      "tokenStandard": null,
+      "collection": null,
+      "uses": null,
+      "collectionDetails": null
+    }
+  },
+  {
+    "label": "current-collection-details",
+    "note": "Parent-collection record with CollectionDetails.V1 { size: 1000 }.",
+    "dataBase64": "BAtwZbHj0XxFOJ1Sf2sEw81YuGxzGqD9tUm20bwD+ClGBpuIV/6rgYT7aH9jRhjANdrEOdwa6ztVmKDwAAAAAAERAAAAUGFyZW50IENvbGxlY3Rpb24DAAAAUEFSHwAAAGh0dHBzOi8vZXhhbXBsZS5jb20vcGFyZW50Lmpzb270AQEBAAAABHnVW/IxwG7udMVuzmgVB/2xst6j9I5RArHNola8E48BZAEBAAEAAAABAOgDAAAAAAAA",
+    "expected": {
+      "version": "current",
+      "key": 4,
+      "updateAuthority": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+      "mint": "So11111111111111111111111111111111111111112",
+      "name": "Parent Collection",
+      "symbol": "PAR",
+      "uri": "https://example.com/parent.json",
+      "sellerFeeBasisPoints": 500,
+      "creators": [
+        {
+          "address": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+          "verified": true,
+          "share": 100
+        }
+      ],
+      "primarySaleHappened": true,
+      "isMutable": true,
+      "editionNonce": null,
+      "tokenStandard": "NonFungible",
+      "collection": null,
+      "uses": null,
+      "collectionDetails": {
+        "size": "1000"
+      }
+    }
+  },
+  {
+    "label": "current-pnft",
+    "note": "ProgrammableNonFungible with trailing ProgrammableConfig(ruleset) bytes.",
+    "dataBase64": "BAtwZbHj0XxFOJ1Sf2sEw81YuGxzGqD9tUm20bwD+ClGzgEOYK/tsicXvWMZL1QUWj+WWjO7gtLHAp6yzh4ggmQMAAAAUHJvZ3JhbW1hYmxlBAAAAFBORlQdAAAAaHR0cHM6Ly9leGFtcGxlLmNvbS9wbmZ0Lmpzb27oAwEBAAAABHnVW/IxwG7udMVuzmgVB/2xst6j9I5RArHNola8E48BZAABAf8BBAAAAAEAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "expected": {
+      "version": "current",
+      "key": 4,
+      "updateAuthority": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+      "mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      "name": "Programmable",
+      "symbol": "PNFT",
+      "uri": "https://example.com/pnft.json",
+      "sellerFeeBasisPoints": 1000,
+      "creators": [
+        {
+          "address": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+          "verified": true,
+          "share": 100
+        }
+      ],
+      "primarySaleHappened": false,
+      "isMutable": true,
+      "editionNonce": 255,
+      "tokenStandard": "ProgrammableNonFungible",
+      "collection": null,
+      "uses": null,
+      "collectionDetails": null
+    }
+  },
+  {
+    "label": "v13-collection-unverified",
+    "note": "Collection present but verified=false; isCollectionMember must reject.",
+    "dataBase64": "BAtwZbHj0XxFOJ1Sf2sEw81YuGxzGqD9tUm20bwD+ClGxvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWEPAAAARmFrZSBDb2xsZWN0aW9uBAAAAEZBS0UdAAAAaHR0cHM6Ly9leGFtcGxlLmNvbS9mYWtlLmpzb24AAAAAAQABAAEABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkA",
+    "expected": {
+      "version": "v1.3",
+      "key": 4,
+      "updateAuthority": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "name": "Fake Collection",
+      "symbol": "FAKE",
+      "uri": "https://example.com/fake.json",
+      "sellerFeeBasisPoints": 0,
+      "creators": null,
+      "primarySaleHappened": false,
+      "isMutable": true,
+      "editionNonce": null,
+      "tokenStandard": "NonFungible",
+      "collection": {
+        "verified": false,
+        "key": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      },
+      "uses": null,
+      "collectionDetails": null
+    }
+  },
+  {
+    "label": "v13-fungible-edition-nonce",
+    "note": "TokenStandard=Fungible with editionNonce set; exercises the Fungible variant index.",
+    "dataBase64": "BAtwZbHj0XxFOJ1Sf2sEw81YuGxzGqD9tUm20bwD+ClGzgEOYK/tsicXvWMZL1QUWj+WWjO7gtLHAp6yzh4ggmQOAAAARnVuZ2libGUgVGhpbmcDAAAARlVOHAAAAGh0dHBzOi8vZXhhbXBsZS5jb20vZnVuLmpzb24AAAECAAAABHnVW/IxwG7udMVuzmgVB/2xst6j9I5RArHNola8E48BMoyXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZADIBAAFkAQIAAA==",
+    "expected": {
+      "version": "v1.3",
+      "key": 4,
+      "updateAuthority": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+      "mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      "name": "Fungible Thing",
+      "symbol": "FUN",
+      "uri": "https://example.com/fun.json",
+      "sellerFeeBasisPoints": 0,
+      "creators": [
+        {
+          "address": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+          "verified": true,
+          "share": 50
+        },
+        {
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "verified": false,
+          "share": 50
+        }
+      ],
+      "primarySaleHappened": true,
+      "isMutable": false,
+      "editionNonce": 100,
+      "tokenStandard": "Fungible",
+      "collection": null,
+      "uses": null,
+      "collectionDetails": null
+    }
+  }
+]
