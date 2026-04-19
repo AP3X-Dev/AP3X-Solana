@@ -12,3 +12,12 @@ export type {
   UseMethod,
   UsesField,
 } from './metadata-decoder';
+
+export { MetadataResolver, extractShape } from './resolver';
+export type {
+  MetadataAttribute,
+  MetadataResolverOptions,
+  MetadataSource,
+  ParsedMetadata,
+  ResolvedMetadata,
+} from './resolver';
