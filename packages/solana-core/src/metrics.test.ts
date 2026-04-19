@@ -153,14 +153,15 @@ describe('emitMetric', () => {
     // compile. Reading the fields below forces TS to use the typed overload
     // rather than the fallback `(...args: any[]) => void`.
     metrics.on('metric', (ev) => {
-      // @ts-expect-no-error — ev.package is MetricEvent['package'], i.e. string
+      // The `: string` annotations force TS to resolve ev.package/op against
+      // MetricEvent; if the overload broke, these lines would fail typecheck.
       const pkg: string = ev.package;
-      // @ts-expect-no-error — ev.op is MetricEvent['op'], i.e. string
       const op: string = ev.op;
-      // Both should be usable without narrowing. `void`-cast to avoid unused
-      // warnings under strict tsconfig.
       void pkg;
       void op;
+      // Negative check: accessing a non-existent field must be a type error.
+      // @ts-expect-error — `nonexistent` is not on MetricEvent
+      void ev.nonexistent;
     });
 
     // Sanity emit to ensure the handler itself runs without runtime error.
