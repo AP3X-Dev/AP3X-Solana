@@ -105,20 +105,24 @@ async function fetchProgramAccounts(
   programId: string,
   dataSize: number,
 ): Promise<RpcAccount[]> {
-  const result = await pool.call('getProgramAccounts', [
+  // Use Helius getProgramAccountsV2 with pagination — full getProgramAccounts against
+  // SPL Token program (millions of accounts) is rejected by most providers.
+  // One page of 500 is plenty for regression-fixture purposes.
+  const result = await pool.call('getProgramAccountsV2', [
     programId,
     {
       encoding: 'base64',
       commitment: 'confirmed',
       filters: [{ dataSize }],
+      limit: 500,
     },
-  ]);
-  if (!Array.isArray(result)) {
-    throw new Error(
-      `getProgramAccounts returned non-array response (got ${typeof result})`,
-    );
-  }
-  return result as RpcAccount[];
+  ]) as { accounts?: RpcAccount[] } | RpcAccount[];
+  // V2 shape: { accounts: [...], paginationKey: string | null }. Legacy shape: just array.
+  if (Array.isArray(result)) return result;
+  if (result && Array.isArray(result.accounts)) return result.accounts;
+  throw new Error(
+    `getProgramAccountsV2 returned unexpected shape (${typeof result})`,
+  );
 }
 
 async function main(): Promise<void> {

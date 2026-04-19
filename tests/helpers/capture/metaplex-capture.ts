@@ -114,31 +114,28 @@ async function fetchByDataSize(
   programId: string,
   dataSize: number,
 ): Promise<RpcAccount[]> {
-  const result = await pool.call('getProgramAccounts', [
+  const result = await pool.call('getProgramAccountsV2', [
     programId,
     {
       encoding: 'base64',
       commitment: 'confirmed',
+      limit: 200,
       filters: [
         { dataSize },
         {
           memcmp: {
             offset: 0,
-            // The RPC expects a base58-encoded bytes value. Single-byte value 4 is
-            // "5" in base58 (alphabet index 4 with a leading '1' weight). We hand-encode
-            // to avoid pulling in a base58 dep at the script layer.
             bytes: base58EncodeByte(METADATA_KEY_DISCRIMINATOR),
           },
         },
       ],
     },
-  ]);
-  if (!Array.isArray(result)) {
-    throw new Error(
-      `getProgramAccounts(dataSize=${dataSize}) returned non-array (got ${typeof result})`,
-    );
-  }
-  return result as RpcAccount[];
+  ]) as { accounts?: RpcAccount[] } | RpcAccount[];
+  if (Array.isArray(result)) return result;
+  if (result && Array.isArray(result.accounts)) return result.accounts;
+  throw new Error(
+    `getProgramAccountsV2(dataSize=${dataSize}) returned unexpected shape (got ${typeof result})`,
+  );
 }
 
 /** Encode a single byte as base58 — sufficient for memcmp on byte 0. */
@@ -195,15 +192,26 @@ async function main(): Promise<void> {
   const chosen = sample(all, SAMPLE_TARGET);
 
   console.error(`Decoding ${chosen.length} metadata accounts...`);
+  let decodeFailures = 0;
   const accounts = chosen.map((r) => {
     const data = Buffer.from(r.account.data[0], 'base64');
+    let decoded: unknown = null;
+    let decodeError: string | null = null;
+    try {
+      decoded = decodeMetadata(data);
+    } catch (e) {
+      decodeError = (e as Error).message;
+      decodeFailures += 1;
+    }
     return {
       pubkey: r.pubkey,
       dataSize: data.length,
       dataBase64: r.account.data[0],
-      decoded: decodeMetadata(data),
+      decoded,
+      decodeError,
     };
   });
+  console.error(`  decode: ${accounts.length - decodeFailures} ok, ${decodeFailures} failed`);
 
   const output = {
     capturedAt: new Date().toISOString(),

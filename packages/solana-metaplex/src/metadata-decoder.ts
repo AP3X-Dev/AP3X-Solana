@@ -319,7 +319,7 @@ export function decodeMetadata(data: Uint8Array): MetadataAccount {
       version = 'v1.3';
     }
   } catch (err) {
-    if (!isEndOfBuffer(err)) throw err;
+    if (!isTolerableV13Error(err)) throw err;
     // Partial v1.3 block — roll back and stay at v1.
     r.offset = beforeV13;
     tokenStandard = null;
@@ -359,7 +359,7 @@ export function decodeMetadata(data: Uint8Array): MetadataAccount {
       version = 'current';
     }
   } catch (err) {
-    if (!isEndOfBuffer(err)) throw err;
+    if (!isTolerableV13Error(err)) throw err;
     r.offset = beforeCurrent;
     collectionDetails = null;
     // Keep version at v1.3 — the v1.3 block read cleanly.
@@ -394,5 +394,21 @@ export function decodeMetadata(data: Uint8Array): MetadataAccount {
 function isEndOfBuffer(err: unknown): boolean {
   return (
     err instanceof Error && err.message.startsWith('borsh: unexpected end of buffer')
+  );
+}
+
+/**
+ * Tolerance predicate for the v1.3+ optional-field blocks only. In addition
+ * to EOF, we also accept `metaplex: invalid COption tag` because real
+ * on-chain accounts written by older program versions sometimes have
+ * non-zero garbage bytes where newer optional fields would later go.
+ * Treating those as "field absent" matches Metaplex's own off-chain
+ * tooling. We do NOT apply this tolerance to editionNonce (v1.1), which
+ * is load-bearing and predates the non-canonical-padding era.
+ */
+function isTolerableV13Error(err: unknown): boolean {
+  if (isEndOfBuffer(err)) return true;
+  return (
+    err instanceof Error && err.message.startsWith('metaplex: invalid COption tag')
   );
 }

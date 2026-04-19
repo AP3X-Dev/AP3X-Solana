@@ -24,6 +24,9 @@
     "release": "turbo run build && changeset publish"
   },
   "devDependencies": {
+    "@ap3x/solana-connectivity": "workspace:*",
+    "@ap3x/solana-metaplex": "workspace:*",
+    "@ap3x/solana-spl": "workspace:*",
     "@changesets/cli": "^2.27.7",
     "@types/node": "^20.14.0",
     "@vitest/coverage-v8": "^2.1.0",

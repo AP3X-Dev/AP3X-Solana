@@ -437,6 +437,7 @@ export class HttpClient extends EventEmitter {
   private _resolveUrl(path: string): string {
     if (/^https?:\/\//i.test(path)) return path;
     if (!this.baseUrl) return path;
+    if (path === '') return this.baseUrl;
     if (this.baseUrl.endsWith('/') && path.startsWith('/')) {
       return this.baseUrl + path.slice(1);
     }
