@@ -47,6 +47,12 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@20.19.39)(msw@2.13.4(@types/node@20.19.39)(typescript@5.9.3))
 
+  packages/solana-connectivity:
+    dependencies:
+      '@ap3x/solana-core':
+        specifier: workspace:*
+        version: link:../solana-core
+
   packages/solana-core: {}
 
   packages/solana-vault:
