@@ -1,0 +1,28 @@
+{
+  "name": "solana-watch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsup",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ap3x/solana-core": "workspace:*",
+    "@ap3x/solana-connectivity": "workspace:*",
+    "@ap3x/solana-tx": "workspace:*",
+    "@ap3x/solana-spl": "workspace:*",
+    "@ap3x/solana-metaplex": "workspace:*",
+    "@ap3x/solana-events": "workspace:*",
+    "@ap3x/solana-vault": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "tsup": "^8.3.0"
+  }
+}
