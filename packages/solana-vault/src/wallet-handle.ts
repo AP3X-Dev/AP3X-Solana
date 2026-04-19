@@ -5,6 +5,8 @@
  *  - Exposes `sign` / `signTransaction` / `address` / `role` only.
  *  - NEVER exposes the raw 32-byte seed via getter, toJSON, or any other path.
  *  - Holds the seed in a private field (`#secretKey`) and zeroes it on `_lock()`.
+ *  - Enforces the SOL reserve guard (T12) at `signTransaction` time when
+ *    reserve policy + balance/delta hooks are configured.
  *
  * Construction is internal to the vault: end users obtain handles by calling
  * `Vault.unlock(name, passphrase)`.
@@ -13,6 +15,8 @@
 import { PublicKey } from '@ap3x/solana-core';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
+
+import { checkSpend } from './reserve-guard';
 
 /**
  * @noble/ed25519 v2.x defers SHA-512 to the host. The library ships with a
@@ -41,6 +45,53 @@ export type SignAuditHook = (
 ) => Promise<void> | void;
 
 /**
+ * Per-wallet reserve guard configuration. All three fields are required to
+ * enable the guard — if any are undefined the guard silently no-ops, which
+ * is the graceful default for wallets without reserve policy.
+ *
+ * Injected at unlock time by `Vault.unlock(name, pp, { getBalance, estimateDelta })`.
+ * The Vault resolves `reserveLamports` from `solReserveByRole[record.role]`.
+ */
+export interface WalletHandleReserveOptions {
+  /** Minimum lamports the wallet must retain after this transaction. */
+  reserveLamports?: bigint;
+  /** Live balance fetcher — typically an RPC pool `getBalance(address)`. */
+  getBalance?: () => Promise<bigint>;
+  /**
+   * Signed lamport delta for the transaction being signed. Spend = negative,
+   * receive = positive. Caller is responsible for including priority fee +
+   * any SOL moves in the estimate.
+   */
+  estimateDelta?: (tx: Uint8Array) => bigint;
+}
+
+/**
+ * Error raised when the SOL reserve guard blocks a signing attempt. Thrown
+ * BEFORE any ed25519 sign call, so a breach never produces a signature —
+ * callers handling this error can safely retry with a smaller spend or
+ * escalate without worrying about a partially-signed tx leaking.
+ */
+export class WalletReserveBreach extends Error {
+  readonly code = 'vault.reserve_breach';
+  readonly meta: {
+    role: string;
+    projectedBalance: bigint;
+    reserveLamports: bigint;
+  };
+  constructor(meta: {
+    role: string;
+    projectedBalance: bigint;
+    reserveLamports: bigint;
+  }) {
+    super(
+      `vault: reserve breach — projected ${meta.projectedBalance} < reserve ${meta.reserveLamports} for role '${meta.role}'`,
+    );
+    this.name = 'WalletReserveBreach';
+    this.meta = meta;
+  }
+}
+
+/**
  * Minimum plausible v0 single-signer transaction byte length: 1 byte for the
  * signature count prefix + 64 bytes for the mandatory single-signer signature
  * slot. The message that follows can in principle be empty (tests cover that
@@ -65,12 +116,14 @@ export class WalletHandle {
   #secretKey: Uint8Array | null;
 
   readonly #onSign: SignAuditHook | undefined;
+  readonly #reserve: WalletHandleReserveOptions;
 
   constructor(
     role: string,
     address: PublicKey,
     secretKey: Uint8Array,
     onSign?: SignAuditHook,
+    reserve?: WalletHandleReserveOptions,
   ) {
     if (secretKey.length !== 32) {
       throw new Error(
@@ -84,6 +137,7 @@ export class WalletHandle {
     // disturbing the caller's memory.
     this.#secretKey = new Uint8Array(secretKey);
     this.#onSign = onSign;
+    this.#reserve = reserve ?? {};
   }
 
   /**
@@ -110,6 +164,9 @@ export class WalletHandle {
    * auth, webhook proofs). For on-chain transactions prefer
    * {@link signTransaction}, which also emits the single-signer v0 wire
    * format.
+   *
+   * Off-chain messages don't touch the lamport balance, so the reserve guard
+   * does NOT apply here.
    */
   async sign(message: Uint8Array): Promise<Uint8Array> {
     const key = this.#secretKey;
@@ -131,6 +188,12 @@ export class WalletHandle {
    * output is `[1 || sig(64) || tx.slice(1)]`, which re-includes the placeholder
    * region — callers that have additional signers must use a different tx assembler.
    *
+   * **Reserve guard (T12):** if all three of `reserveLamports`, `getBalance`,
+   * and `estimateDelta` were configured at unlock time, this method fetches
+   * the current balance, estimates the net delta, and throws
+   * `WalletReserveBreach` BEFORE signing if the projected balance would fall
+   * below the reserve. A missing hook disables the guard.
+   *
    * Multi-signer support and proper message-only signing are deferred to
    * `@ap3x/solana-tx` (PRP-01 Task 22).
    */
@@ -147,6 +210,33 @@ export class WalletHandle {
         'signTransaction: only single-signer v0 transactions supported (tx[0] must be 1)',
       );
     }
+
+    // Reserve guard — checked BEFORE signing so a breach never emits a sig.
+    // All three hooks must be present; any absence disables the guard. This
+    // matches the "graceful default" contract: the Vault may choose not to
+    // configure reserve policy for every role.
+    const { reserveLamports, getBalance, estimateDelta } = this.#reserve;
+    if (
+      reserveLamports !== undefined &&
+      getBalance !== undefined &&
+      estimateDelta !== undefined
+    ) {
+      const currentBalance = await getBalance();
+      const txEstimatedDelta = estimateDelta(tx);
+      const result = checkSpend({
+        reserveLamports,
+        currentBalance,
+        txEstimatedDelta,
+      });
+      if (!result.ok) {
+        throw new WalletReserveBreach({
+          role: this.role,
+          projectedBalance: result.projectedBalance,
+          reserveLamports: result.reserveLamports,
+        });
+      }
+    }
+
     const messageBytes = tx.slice(1);
     const signature = await ed.signAsync(messageBytes, key);
     const out = new Uint8Array(1 + 64 + messageBytes.length);

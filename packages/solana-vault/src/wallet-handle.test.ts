@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll, vi } from 'vitest';
 import * as ed from '@noble/ed25519';
 import { PublicKey } from '@ap3x/solana-core';
 
-import { WalletHandle } from './wallet-handle';
+import { WalletHandle, WalletReserveBreach } from './wallet-handle';
 
 // Importing wallet-handle installs the sha512 hasher side-effect, so ed.sign
 // works even before any WalletHandle is instantiated. Tests also awaiting
@@ -171,5 +171,126 @@ describe('WalletHandle', () => {
     tx[0] = 1;
     await h.signTransaction(tx);
     expect(hook).toHaveBeenCalledWith('sign', { kind: 'transaction', byteLength: 73 });
+  });
+});
+
+describe('WalletHandle — SOL reserve guard', () => {
+  let seed: Uint8Array;
+  let pubkey: Uint8Array;
+  let address: PublicKey;
+
+  beforeAll(async () => {
+    seed = crypto.getRandomValues(new Uint8Array(32));
+    pubkey = await ed.getPublicKeyAsync(seed);
+    address = PublicKey.fromBytes(pubkey);
+  });
+
+  function makeTx(): Uint8Array {
+    const tx = new Uint8Array(1 + 64 + 4);
+    tx[0] = 1;
+    return tx;
+  }
+
+  it('allows signTransaction when projected balance stays above reserve', async () => {
+    // Balance well above reserve + spend leaves a comfortable margin.
+    const h = new WalletHandle('trader', address, seed, undefined, {
+      getBalance: async () => 10_000_000n,
+      estimateDelta: () => -1_000_000n,
+      reserveLamports: 1_000_000n,
+    });
+    const tx = makeTx();
+    const signed = await h.signTransaction(tx);
+    // Per the T11 signTransaction contract: output = [1 || sig(64) || tx.slice(1)]
+    // and tx.slice(1) is tx.length - 1 bytes (includes the placeholder region).
+    expect(signed.length).toBe(1 + 64 + (tx.length - 1));
+    expect(signed[0]).toBe(1);
+  });
+
+  it('rejects signTransaction with WalletReserveBreach when guard trips', async () => {
+    const h = new WalletHandle('trader', address, seed, undefined, {
+      getBalance: async () => 2_000_000n,
+      estimateDelta: () => -1_500_000n,
+      reserveLamports: 1_000_000n,
+    });
+    // Projected 500_000 < reserve 1_000_000 → breach.
+    await expect(h.signTransaction(makeTx())).rejects.toBeInstanceOf(
+      WalletReserveBreach,
+    );
+  });
+
+  it('WalletReserveBreach carries role + projectedBalance + reserveLamports meta', async () => {
+    const h = new WalletHandle('trader', address, seed, undefined, {
+      getBalance: async () => 2_000_000n,
+      estimateDelta: () => -1_500_000n,
+      reserveLamports: 1_000_000n,
+    });
+    try {
+      await h.signTransaction(makeTx());
+      throw new Error('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(WalletReserveBreach);
+      const err = e as WalletReserveBreach;
+      expect(err.code).toBe('vault.reserve_breach');
+      expect(err.meta.role).toBe('trader');
+      expect(err.meta.projectedBalance).toBe(500_000n);
+      expect(err.meta.reserveLamports).toBe(1_000_000n);
+    }
+  });
+
+  it('signs normally when reserve config is not provided (no guard hooks)', async () => {
+    // Guard is opt-in: absence of reserveLamports / getBalance / estimateDelta
+    // means "no reserve policy for this wallet" — sign must succeed regardless
+    // of balance.
+    const h = new WalletHandle('trader', address, seed);
+    const tx = makeTx();
+    const signed = await h.signTransaction(tx);
+    expect(signed.length).toBe(1 + 64 + (tx.length - 1));
+    expect(signed[0]).toBe(1);
+  });
+
+  it('skips guard when reserveLamports is set but getBalance is missing', async () => {
+    // We cannot project without a balance source, so with no getBalance the
+    // guard silently no-ops. This is the graceful default.
+    const h = new WalletHandle('trader', address, seed, undefined, {
+      reserveLamports: 999_999_999_999n,
+      estimateDelta: () => -1n,
+    });
+    await expect(h.signTransaction(makeTx())).resolves.toBeDefined();
+  });
+
+  it('skips guard when reserveLamports is set but estimateDelta is missing', async () => {
+    const h = new WalletHandle('trader', address, seed, undefined, {
+      reserveLamports: 999_999_999_999n,
+      getBalance: async () => 0n,
+    });
+    await expect(h.signTransaction(makeTx())).resolves.toBeDefined();
+  });
+
+  it('checks reserve BEFORE signing so breaches do not produce a signature', async () => {
+    // When the guard throws, onSign must never fire and the caller must get
+    // the breach error, not a partially-signed tx. We verify by observing that
+    // the onSign hook is never invoked.
+    const hook = vi.fn();
+    const h = new WalletHandle('trader', address, seed, hook, {
+      getBalance: async () => 1n,
+      estimateDelta: () => -1n,
+      reserveLamports: 10n,
+    });
+    await expect(h.signTransaction(makeTx())).rejects.toBeInstanceOf(
+      WalletReserveBreach,
+    );
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('passes the original tx bytes to estimateDelta', async () => {
+    const tx = makeTx();
+    const estimateDelta = vi.fn(() => 0n);
+    const h = new WalletHandle('trader', address, seed, undefined, {
+      getBalance: async () => 1_000_000n,
+      estimateDelta,
+      reserveLamports: 0n,
+    });
+    await h.signTransaction(tx);
+    expect(estimateDelta).toHaveBeenCalledWith(tx);
   });
 });

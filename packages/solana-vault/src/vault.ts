@@ -7,14 +7,18 @@
  *  - Plaintext in/out of storage is always the 32-byte ed25519 seed.
  *  - Encryption uses libsodium `crypto_secretbox_easy` with Argon2id-derived
  *    keys. `crypto.ts` (T10) owns primitive correctness; this file owns policy.
- *  - Passphrase policy is enforced at `addWallet` (and future `rotateKey`),
- *    never bypassed by constructor flags.
+ *  - Passphrase policy is enforced at `addWallet` and `rotateKey`, never
+ *    bypassed by constructor flags.
+ *  - SOL reserve guard (T12) is enforced at the `WalletHandle.signTransaction`
+ *    boundary: the Vault wires `solReserveByRole[role]` + caller-provided
+ *    balance/delta hooks into each unlocked handle.
  */
 
 import { PublicKey } from '@ap3x/solana-core';
 import * as ed from '@noble/ed25519';
 import sodium from 'libsodium-wrappers-sumo';
 
+import { logAudit } from './audit';
 import { decrypt, deriveKey, encrypt, ready } from './crypto';
 import type {
   AuditEntry,
@@ -37,6 +41,29 @@ export interface VaultOptions {
   kdf?: KdfOverrides;
   /** Passphrase policy overrides. */
   passphrasePolicy?: PassphrasePolicy;
+  /**
+   * Per-role SOL reserve floors in lamports (T12 — PRP-01 Section 3.7).
+   * When a wallet is unlocked, its `role` is looked up against this map and
+   * the matching lamport floor is wired into the WalletHandle. Roles not
+   * present here have no reserve policy — the guard silently no-ops. This
+   * lets operators opt individual roles (e.g. `trader`) into the guard
+   * without imposing a default on warm wallets or sweep accounts.
+   */
+  solReserveByRole?: Record<string, bigint>;
+}
+
+/** Options passed to `Vault.unlock` to wire up the reserve guard. */
+export interface UnlockOptions {
+  /**
+   * Live balance fetcher for the unlocked wallet (lamports). Typically an
+   * RPC pool's `getBalance(address)`. Required to enable the reserve guard.
+   */
+  getBalance?: () => Promise<bigint>;
+  /**
+   * Signed lamport delta estimator for a transaction. Caller includes priority
+   * fee + SOL moves. Required to enable the reserve guard.
+   */
+  estimateDelta?: (tx: Uint8Array) => bigint;
 }
 
 /**
@@ -87,6 +114,7 @@ export class Vault {
   readonly #policy: PassphrasePolicy;
   readonly #opslimit: number | null;
   readonly #memlimit: number | null;
+  readonly #solReserveByRole: Record<string, bigint>;
 
   /**
    * Handles that have been unlocked this process and not yet re-locked.
@@ -100,6 +128,7 @@ export class Vault {
     this.#policy = options.passphrasePolicy ?? {};
     this.#opslimit = options.kdf?.opslimit ?? null;
     this.#memlimit = options.kdf?.memlimit ?? null;
+    this.#solReserveByRole = options.solReserveByRole ?? {};
   }
 
   /**
@@ -204,10 +233,9 @@ export class Vault {
     }
 
     await this.#storage.write(name, record);
-    await this.#storage.appendAudit(name, {
-      timestamp: new Date().toISOString(),
-      event: 'create',
-      metadata: { role, address: record.address },
+    await logAudit(this.#storage, name, 'create', {
+      role,
+      address: record.address,
     });
   }
 
@@ -221,8 +249,19 @@ export class Vault {
    * Called twice for the same name, the second call LOCKS the first handle
    * before returning a new one, so stale handles can't outlive their unlock
    * call and the Map never double-counts.
+   *
+   * **T12 SOL reserve guard wiring.** If the wallet's `role` appears in the
+   * Vault's `solReserveByRole` map AND the caller supplies both `getBalance`
+   * and `estimateDelta` in `options`, those three values are wired into the
+   * returned handle and `signTransaction` will enforce the reserve floor. If
+   * any of the three is missing the guard silently no-ops, which is the
+   * documented graceful default — operators opt in per-role.
    */
-  async unlock(name: string, passphrase: string): Promise<WalletHandle> {
+  async unlock(
+    name: string,
+    passphrase: string,
+    options?: UnlockOptions,
+  ): Promise<WalletHandle> {
     const record = await this.#storage.read(name);
     if (!record) throw new Error(`vault: wallet '${name}' not found`);
 
@@ -256,16 +295,26 @@ export class Vault {
 
     const address = PublicKey.fromBase58(record.address);
     const storage = this.#storage;
+    const reserveLamports = this.#solReserveByRole[record.role];
     const handle = new WalletHandle(
       record.role,
       address,
       secretKey,
       async (event, metadata) => {
-        await storage.appendAudit(name, {
-          timestamp: new Date().toISOString(),
-          event,
-          metadata,
-        });
+        await logAudit(storage, name, event, metadata);
+      },
+      {
+        // Only populate `reserveLamports` when a policy exists for this role.
+        // The handle already silently no-ops when any of the three hooks is
+        // undefined; leaving `reserveLamports` unset here is equivalent to
+        // "no reserve policy for this wallet."
+        ...(reserveLamports !== undefined ? { reserveLamports } : {}),
+        ...(options?.getBalance !== undefined
+          ? { getBalance: options.getBalance }
+          : {}),
+        ...(options?.estimateDelta !== undefined
+          ? { estimateDelta: options.estimateDelta }
+          : {}),
       },
     );
     this.#unlocked.set(name, handle);
@@ -274,10 +323,9 @@ export class Vault {
     // handle (which took its own defensive copy).
     secretKey.fill(0);
 
-    await this.#storage.appendAudit(name, {
-      timestamp: new Date().toISOString(),
-      event: 'unlock',
-      metadata: { address: record.address, role: record.role },
+    await logAudit(this.#storage, name, 'unlock', {
+      address: record.address,
+      role: record.role,
     });
 
     return handle;
@@ -304,6 +352,104 @@ export class Vault {
   lockAll(): void {
     for (const handle of this.#unlocked.values()) handle._lock();
     this.#unlocked.clear();
+  }
+
+  /**
+   * Re-encrypt an existing wallet under a new passphrase.
+   *
+   * Rotation preserves the underlying ed25519 seed — and therefore the
+   * wallet's on-chain address — but generates a fresh salt, derives a fresh
+   * key from `newPassphrase`, and writes a new nonce + ciphertext. After a
+   * successful rotation:
+   *
+   *  - `oldPassphrase` no longer unlocks the wallet (wrong derived key → MAC fail)
+   *  - `newPassphrase` unlocks the wallet and yields the same `address`
+   *  - a `rotate` audit entry is appended
+   *  - `createdAt`, `name`, `role`, `address` are preserved on disk
+   *
+   * Raises:
+   *  - `vault: wallet '<name>' not found` — unknown name
+   *  - `vault: invalid passphrase` — oldPassphrase doesn't match
+   *  - passphrase policy error — newPassphrase fails the configured policy
+   *
+   * The seed is kept in a single local buffer for the duration of the
+   * rotation and zeroed in a `finally` block, so rotation never lengthens the
+   * window a plaintext seed spends in process memory beyond a single
+   * encrypt call.
+   */
+  async rotateKey(
+    name: string,
+    oldPassphrase: string,
+    newPassphrase: string,
+  ): Promise<void> {
+    // Validate the NEW passphrase up front — don't spend the KDF budget on an
+    // old-passphrase decrypt just to reject the new one afterwards.
+    validatePassphrase(newPassphrase, this.#policy);
+
+    const record = await this.#storage.read(name);
+    if (!record) throw new Error(`vault: wallet '${name}' not found`);
+
+    await ready();
+    const oldSalt = b64decode(record.kdf.salt);
+    const oldNonce = b64decode(record.encryption.nonce);
+    const oldCiphertext = b64decode(record.encryption.ciphertext);
+
+    const oldKey = await deriveKey(
+      oldPassphrase,
+      oldSalt,
+      record.kdf.opslimit,
+      record.kdf.memlimit,
+    );
+
+    let seed: Uint8Array;
+    try {
+      seed = await decrypt(oldKey, oldNonce, oldCiphertext);
+    } catch {
+      // Same generic message as `unlock` so an attacker probing rotateKey
+      // can't tell wrong-passphrase from other failures by wording.
+      throw new Error('vault: invalid passphrase');
+    } finally {
+      oldKey.fill(0);
+    }
+
+    try {
+      // Fresh salt per rotation so the new encryption is not linkable to the
+      // old one. A rotation that reused the old salt would leak the KDF
+      // parameters' effectiveness under the old passphrase.
+      const newSalt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES);
+      const { opslimit, memlimit } = await this.kdfParams();
+      const newKey = await deriveKey(
+        newPassphrase,
+        newSalt,
+        opslimit,
+        memlimit,
+      );
+      try {
+        const { nonce, ciphertext } = await encrypt(newKey, seed);
+        const newRecord: EncryptedRecord = {
+          ...record,
+          kdf: {
+            algo: 'argon2id',
+            salt: b64encode(newSalt),
+            opslimit,
+            memlimit,
+          },
+          encryption: {
+            algo: 'xsalsa20-poly1305',
+            nonce: b64encode(nonce),
+            ciphertext: b64encode(ciphertext),
+          },
+        };
+        await this.#storage.write(name, newRecord);
+        await logAudit(this.#storage, name, 'rotate', { role: record.role });
+      } finally {
+        newKey.fill(0);
+      }
+    } finally {
+      // Always zero the plaintext seed — even if re-encryption failed, we do
+      // not want a stray copy lingering.
+      seed.fill(0);
+    }
   }
 
   /**

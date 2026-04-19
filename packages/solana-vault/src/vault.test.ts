@@ -9,7 +9,7 @@ import * as ed from '@noble/ed25519';
 import { FileVaultStorage } from './storage-file';
 import { ready } from './crypto';
 import { Vault, validatePassphrase } from './vault';
-import { WalletHandle } from './wallet-handle';
+import { WalletHandle, WalletReserveBreach } from './wallet-handle';
 
 const STRONG_PASSPHRASE = 'Horse-Battery-Staple-42!';
 
@@ -258,6 +258,180 @@ describe('Vault — addWallet / unlock / lock', () => {
     await expect(vault.unlock('main', firstPassphrase)).rejects.toThrow(
       /invalid passphrase/,
     );
+  });
+});
+
+describe('Vault — rotateKey', () => {
+  let vault: Vault;
+  let baseDir: string;
+
+  beforeEach(async () => {
+    ({ vault, baseDir } = await freshVault());
+  });
+
+  afterEach(async () => {
+    vault.lockAll();
+    await fs.rm(baseDir, { recursive: true, force: true });
+  });
+
+  it('rotates a wallet so the new passphrase unlocks and derives the same address', async () => {
+    const seed = randomSeed();
+    await vault.addWallet('main', 'trader', seed, STRONG_PASSPHRASE);
+    const firstHandle = await vault.unlock('main', STRONG_PASSPHRASE);
+    const addressBefore = firstHandle.address.toBase58();
+    vault.lock('main');
+
+    const newPassphrase = 'Fresh-New-Passphrase-99!';
+    await vault.rotateKey('main', STRONG_PASSPHRASE, newPassphrase);
+
+    // New passphrase works, and derives the SAME address — rotation changes
+    // the encryption key, not the underlying ed25519 seed.
+    const rotated = await vault.unlock('main', newPassphrase);
+    expect(rotated.address.toBase58()).toBe(addressBefore);
+
+    // And the signing key is functionally identical: the same message under
+    // the same seed produces a signature that verifies against the same pubkey.
+    const msg = new TextEncoder().encode('post-rotate');
+    const sig = await rotated.sign(msg);
+    expect(await ed.verifyAsync(sig, msg, rotated.address.toBuffer())).toBe(true);
+  });
+
+  it('invalidates the old passphrase after rotation (one-way)', async () => {
+    const seed = randomSeed();
+    await vault.addWallet('main', 'trader', seed, STRONG_PASSPHRASE);
+    const newPassphrase = 'Another-Strong-One-77!';
+    await vault.rotateKey('main', STRONG_PASSPHRASE, newPassphrase);
+
+    await expect(vault.unlock('main', STRONG_PASSPHRASE)).rejects.toThrow(
+      /invalid passphrase/,
+    );
+  });
+
+  it('rejects rotateKey when the old passphrase is wrong', async () => {
+    const seed = randomSeed();
+    await vault.addWallet('main', 'trader', seed, STRONG_PASSPHRASE);
+    await expect(
+      vault.rotateKey('main', 'Wrong-Old-Passphrase-99!', 'Brand-New-Pp-42!'),
+    ).rejects.toThrow(/invalid passphrase/);
+  });
+
+  it('rejects rotateKey when the new passphrase fails the policy', async () => {
+    const seed = randomSeed();
+    await vault.addWallet('main', 'trader', seed, STRONG_PASSPHRASE);
+    await expect(
+      vault.rotateKey('main', STRONG_PASSPHRASE, 'short'),
+    ).rejects.toThrow(/at least 12/);
+    await expect(
+      vault.rotateKey('main', STRONG_PASSPHRASE, 'alllowercasenothingelse'),
+    ).rejects.toThrow(/at least 3/);
+  });
+
+  it('rejects rotateKey on an unknown wallet', async () => {
+    await expect(
+      vault.rotateKey('ghost', STRONG_PASSPHRASE, 'Brand-New-Pp-42!'),
+    ).rejects.toThrow(/not found/);
+  });
+
+  it('writes a rotate audit entry after successful rotation', async () => {
+    const seed = randomSeed();
+    await vault.addWallet('main', 'trader', seed, STRONG_PASSPHRASE);
+    await vault.rotateKey('main', STRONG_PASSPHRASE, 'Brand-New-Pp-42!');
+    const audit = await vault.audit('main');
+    const rotateEvents = audit.filter((e) => e.event === 'rotate');
+    expect(rotateEvents.length).toBe(1);
+    expect(rotateEvents[0]?.metadata?.role).toBe('trader');
+  });
+
+  it('rotation changes the on-disk salt + ciphertext (so re-encryption really happened)', async () => {
+    const seed = randomSeed();
+    await vault.addWallet('main', 'trader', seed, STRONG_PASSPHRASE);
+    const before = JSON.parse(
+      await fs.readFile(path.join(baseDir, 'main.json'), 'utf-8'),
+    );
+    await vault.rotateKey('main', STRONG_PASSPHRASE, 'Another-Fresh-Pp-42!');
+    const after = JSON.parse(
+      await fs.readFile(path.join(baseDir, 'main.json'), 'utf-8'),
+    );
+    // Salt must change so an old key never matches the new record.
+    expect(after.kdf.salt).not.toBe(before.kdf.salt);
+    // Ciphertext must change (fresh nonce + fresh key = different output).
+    expect(after.encryption.ciphertext).not.toBe(before.encryption.ciphertext);
+    // Address / name / role are preserved — same underlying seed.
+    expect(after.address).toBe(before.address);
+    expect(after.name).toBe(before.name);
+    expect(after.role).toBe(before.role);
+  });
+});
+
+describe('Vault — SOL reserve guard integration', () => {
+  let baseDir: string;
+
+  beforeEach(async () => {
+    baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vault-reserve-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(baseDir, { recursive: true, force: true });
+  });
+
+  it('unlock applies solReserveByRole to the wallet handle', async () => {
+    const storage = new FileVaultStorage({ baseDir });
+    const vault = new Vault({
+      storage,
+      kdf: KDF_MIN,
+      solReserveByRole: { trader: 1_000_000n },
+    });
+    const seed = randomSeed();
+    await vault.addWallet('main', 'trader', seed, STRONG_PASSPHRASE);
+    const handle = await vault.unlock('main', STRONG_PASSPHRASE, {
+      getBalance: async () => 2_000_000n,
+      estimateDelta: () => -1_500_000n,
+    });
+    const tx = new Uint8Array(1 + 64 + 4);
+    tx[0] = 1;
+    // Projected 500k < reserve 1M → breach.
+    await expect(handle.signTransaction(tx)).rejects.toBeInstanceOf(
+      WalletReserveBreach,
+    );
+    vault.lockAll();
+  });
+
+  it('wallets whose role has no reserve policy configured sign normally', async () => {
+    const storage = new FileVaultStorage({ baseDir });
+    const vault = new Vault({
+      storage,
+      kdf: KDF_MIN,
+      solReserveByRole: { trader: 10_000_000n }, // no policy for 'warm-wallet'
+    });
+    const seed = randomSeed();
+    await vault.addWallet('warm', 'warm-wallet', seed, STRONG_PASSPHRASE);
+    const handle = await vault.unlock('warm', STRONG_PASSPHRASE, {
+      getBalance: async () => 0n,
+      estimateDelta: () => -999_999n,
+    });
+    const tx = new Uint8Array(1 + 64 + 4);
+    tx[0] = 1;
+    // No reserve policy for this role → guard never trips even though balance
+    // would obviously drop below zero. This is the documented graceful default.
+    await expect(handle.signTransaction(tx)).resolves.toBeDefined();
+    vault.lockAll();
+  });
+
+  it('unlock without getBalance/estimateDelta disables the guard even if reserve is set', async () => {
+    const storage = new FileVaultStorage({ baseDir });
+    const vault = new Vault({
+      storage,
+      kdf: KDF_MIN,
+      solReserveByRole: { trader: 10_000_000n },
+    });
+    const seed = randomSeed();
+    await vault.addWallet('main', 'trader', seed, STRONG_PASSPHRASE);
+    // No reserve hooks passed — guard silently no-ops because we cannot check.
+    const handle = await vault.unlock('main', STRONG_PASSPHRASE);
+    const tx = new Uint8Array(1 + 64 + 4);
+    tx[0] = 1;
+    await expect(handle.signTransaction(tx)).resolves.toBeDefined();
+    vault.lockAll();
   });
 });
 
