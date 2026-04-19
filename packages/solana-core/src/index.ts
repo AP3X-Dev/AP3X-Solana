@@ -7,3 +7,4 @@ export * as borsh from './borsh';
 export { Reader, Writer } from './borsh';
 export * from './public-key';
 export * from './cluster';
+export * from './errors';
