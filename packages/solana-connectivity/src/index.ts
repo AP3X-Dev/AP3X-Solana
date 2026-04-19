@@ -28,3 +28,16 @@ export type {
 export type { Checkpoint, CheckpointStore } from './checkpoint-store';
 export { FileCheckpointStore } from './checkpoint-store-file';
 export type { FileCheckpointStoreOptions } from './checkpoint-store-file';
+export { RpcHistoricalBackfill } from './historical-backfill';
+export type {
+  DecodedEvent,
+  UnknownEventDecode,
+  EventDecodeResult,
+  TransactionDecoder,
+  GetSignaturesOptions,
+  IterateSignaturesOptions,
+  GetTransactionOptions,
+  SignatureInfo,
+  SlotRange,
+  Commitment,
+} from './historical-backfill';
