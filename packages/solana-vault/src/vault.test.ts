@@ -205,6 +205,7 @@ describe('Vault — addWallet / unlock / lock', () => {
     const handle = await vault.unlock('main', STRONG_PASSPHRASE);
     await handle.sign(new Uint8Array([1, 2, 3]));
     const tx = new Uint8Array(1 + 64 + 4);
+    tx[0] = 1;
     await handle.signTransaction(tx);
     const audit = await vault.audit('main');
     const signEvents = audit.filter((e) => e.event === 'sign');
@@ -220,6 +221,44 @@ describe('Vault — addWallet / unlock / lock', () => {
   it('list returns empty when no wallets exist yet', async () => {
     expect(await vault.list()).toEqual([]);
   });
+
+  it('addWallet refuses to silently overwrite an existing wallet', async () => {
+    const seed = randomSeed();
+    await vault.addWallet('main', 'trader', seed, STRONG_PASSPHRASE);
+    // Second call without overwrite must throw — a security primitive should
+    // never discard keys without explicit opt-in.
+    await expect(
+      vault.addWallet('main', 'trader', randomSeed(), STRONG_PASSPHRASE),
+    ).rejects.toThrow(/already exists/);
+  });
+
+  it('addWallet with { overwrite: true } replaces the existing record', async () => {
+    const firstSeed = randomSeed();
+    const firstPassphrase = STRONG_PASSPHRASE;
+    await vault.addWallet('main', 'trader', firstSeed, firstPassphrase);
+
+    const secondSeed = randomSeed();
+    const secondPassphrase = 'Brand-New-Passphrase-99!';
+    await vault.addWallet(
+      'main',
+      'trader',
+      secondSeed,
+      secondPassphrase,
+      { overwrite: true },
+    );
+
+    // New passphrase + new seed work: unlocked handle's pubkey matches the
+    // new seed's derived pubkey.
+    const handle = await vault.unlock('main', secondPassphrase);
+    const expectedPubkey = await ed.getPublicKeyAsync(secondSeed);
+    expect(Buffer.from(handle.address.toBuffer()).equals(Buffer.from(expectedPubkey))).toBe(true);
+    vault.lock('main');
+
+    // Old passphrase fails — we really did replace, not append.
+    await expect(vault.unlock('main', firstPassphrase)).rejects.toThrow(
+      /invalid passphrase/,
+    );
+  });
 });
 
 describe('Vault — property: encrypt → decrypt → sign → verify over random keypairs', () => {
@@ -233,7 +272,13 @@ describe('Vault — property: encrypt → decrypt → sign → verify over rando
           fc.integer({ min: 0, max: 1_000_000 }),
           async (seedBytes, message, counter) => {
             const name = `w${counter}`;
-            await vault.addWallet(name, 'trader', seedBytes, STRONG_PASSPHRASE);
+            // fast-check may shrink `counter` to the same value across runs,
+            // which would now collide with the duplicate-wallet guard. Opt
+            // into overwrite for the property test — this is the one place
+            // where "replace this slot repeatedly" is the intended behaviour.
+            await vault.addWallet(name, 'trader', seedBytes, STRONG_PASSPHRASE, {
+              overwrite: true,
+            });
             const handle = await vault.unlock(name, STRONG_PASSPHRASE);
             const sig = await handle.sign(message);
             const ok = await ed.verifyAsync(sig, message, handle.address.toBuffer());

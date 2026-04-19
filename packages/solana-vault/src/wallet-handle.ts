@@ -41,13 +41,13 @@ export type SignAuditHook = (
 ) => Promise<void> | void;
 
 /**
- * Minimum plausible v0 transaction byte length: 1 byte for signature count + 0
- * for sigs (shouldn't happen but we don't want to crash) + a header (3 bytes)
- * + at least one account key (32 bytes) + blockhash (32 bytes). We only
- * enforce the signature-count prefix invariant — anything shorter than one
- * byte can't even be a v0 tx.
+ * Minimum plausible v0 single-signer transaction byte length: 1 byte for the
+ * signature count prefix + 64 bytes for the mandatory single-signer signature
+ * slot. The message that follows can in principle be empty (tests cover that
+ * edge), so we guard only the structural prefix + slot here. Shorter inputs
+ * can't match the `[1 || zero(64) || message]` layout this helper accepts.
  */
-const V0_TX_MIN_LENGTH = 1;
+const V0_TX_MIN_LENGTH = 1 + 64;
 
 export class WalletHandle {
   readonly address: PublicKey;
@@ -120,23 +120,19 @@ export class WalletHandle {
   }
 
   /**
-   * Sign a v0 (Versioned) transaction that has been serialized to the
-   * [count || existing_sigs (0-filled) || message] wire layout with
-   * `count === 1` placeholder. Per PRP-01 Section 3.7 we only support the
-   * single-signer case in T11 — multi-signer aggregation belongs to the
-   * Strategy layer.
+   * Sign a v0 Solana transaction buffer. This is a SINGLE-SIGNER-ONLY helper.
    *
-   * Input layout:
-   *   tx[0]         = signature count (compact-u16, 1 byte for counts 0-127)
-   *   tx[1..1+64n]  = existing signatures (may be zero-filled for our slot)
-   *   tx[1+64n..]   = serialized message
+   * The input MUST have the exact layout `[1 || zero(64) || message]`:
+   *   - byte 0: signature count (must be 1)
+   *   - bytes 1..65: 64-byte placeholder for the signature (can be zero-filled)
+   *   - bytes 65..: the message portion
    *
-   * Output layout (single-signer):
-   *   [ 1 || sig(64) || message(rest) ]
+   * The signed portion is `tx.slice(1)` (everything after the count prefix). The
+   * output is `[1 || sig(64) || tx.slice(1)]`, which re-includes the placeholder
+   * region — callers that have additional signers must use a different tx assembler.
    *
-   * The message-portion-to-sign is tx.slice(1), which is the canonical thing
-   * RPC nodes hash in a single-signer v0 tx. Re-signing an already-signed
-   * single-signer tx produces the same wire bytes.
+   * Multi-signer support and proper message-only signing are deferred to
+   * `@ap3x/solana-tx` (PRP-01 Task 22).
    */
   async signTransaction(tx: Uint8Array): Promise<Uint8Array> {
     const key = this.#secretKey;
@@ -144,6 +140,11 @@ export class WalletHandle {
     if (tx.length < V0_TX_MIN_LENGTH) {
       throw new Error(
         `vault: transaction too short to sign (got ${tx.length} bytes, expected at least ${V0_TX_MIN_LENGTH})`,
+      );
+    }
+    if (tx[0] !== 1) {
+      throw new Error(
+        'signTransaction: only single-signer v0 transactions supported (tx[0] must be 1)',
       );
     }
     const messageBytes = tx.slice(1);

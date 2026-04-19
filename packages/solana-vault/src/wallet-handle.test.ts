@@ -88,6 +88,48 @@ describe('WalletHandle', () => {
     await expect(h.signTransaction(new Uint8Array(0))).rejects.toThrow(/too short/);
   });
 
+  it('rejects signTransaction inputs shorter than the 65-byte prefix+slot', async () => {
+    const h = new WalletHandle('trader', address, seed);
+    // 63 bytes is just shy of the 1 + 64 = 65-byte minimum. Must throw the
+    // length guard error before touching the key, so we catch malformed input
+    // rather than producing a silently wrong signature.
+    const short = new Uint8Array(63);
+    short[0] = 1;
+    await expect(h.signTransaction(short)).rejects.toThrow(/too short/);
+  });
+
+  it('rejects signTransaction inputs whose tx[0] !== 1 (not single-signer)', async () => {
+    const h = new WalletHandle('trader', address, seed);
+    // Layout size is fine, but the signature count prefix is wrong — this is
+    // the exact shape a multi-signer v0 tx would have and we refuse to sign it.
+    const twoSigner = new Uint8Array(1 + 64 + 4);
+    twoSigner[0] = 2;
+    await expect(h.signTransaction(twoSigner)).rejects.toThrow(
+      /only single-signer/,
+    );
+    const zeroSigner = new Uint8Array(1 + 64 + 4);
+    zeroSigner[0] = 0;
+    await expect(h.signTransaction(zeroSigner)).rejects.toThrow(
+      /only single-signer/,
+    );
+  });
+
+  it('accepts signTransaction at exactly V0_TX_MIN_LENGTH (65 bytes)', async () => {
+    const h = new WalletHandle('trader', address, seed);
+    // [1 || zero(64)] — the minimum valid shape. The output re-includes the
+    // 64-byte placeholder region as part of the signed message (tx.slice(1)),
+    // so the output length is 1 + 64 + 64 = 129 bytes. This is the documented
+    // T11 behaviour, kept intact by the new guards.
+    const tx = new Uint8Array(1 + 64);
+    tx[0] = 1;
+    const signed = await h.signTransaction(tx);
+    expect(signed.length).toBe(1 + 64 + 64);
+    expect(signed[0]).toBe(1);
+    // Signature must verify against the signed portion (tx.slice(1)).
+    const sig = signed.slice(1, 1 + 64);
+    expect(await ed.verifyAsync(sig, tx.slice(1), pubkey)).toBe(true);
+  });
+
   it('rejects construction with a non-32-byte seed', () => {
     expect(() => new WalletHandle('x', address, new Uint8Array(16))).toThrow(/32-byte/);
     expect(() => new WalletHandle('x', address, new Uint8Array(64))).toThrow(/32-byte/);
@@ -126,6 +168,7 @@ describe('WalletHandle', () => {
     expect(hook).toHaveBeenCalledWith('sign', { kind: 'message', byteLength: 3 });
 
     const tx = new Uint8Array(1 + 64 + 8);
+    tx[0] = 1;
     await h.signTransaction(tx);
     expect(hook).toHaveBeenCalledWith('sign', { kind: 'transaction', byteLength: 73 });
   });

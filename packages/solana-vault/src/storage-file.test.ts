@@ -141,6 +141,47 @@ describe('FileVaultStorage', () => {
     expect(got[1]?.event).toBe('unlock');
   });
 
+  it('readAudit skips whitespace-only lines (not just truly blank ones)', async () => {
+    const p = path.join(baseDir, 'ws.audit.jsonl');
+    await fs.writeFile(
+      p,
+      '{"timestamp":"t1","event":"create"}\n   \n\t\n{"timestamp":"t2","event":"unlock"}\n',
+      'utf-8',
+    );
+    const got = await storage.readAudit('ws');
+    expect(got.length).toBe(2);
+    expect(got[0]?.event).toBe('create');
+    expect(got[1]?.event).toBe('unlock');
+  });
+
+  it('serializes concurrent appendAudit calls so no JSONL line is torn', async () => {
+    // Fire 50 concurrent appendAudit calls on the same storage instance. If
+    // the #auditChain serialization is working, each write completes before
+    // the next begins and every line on disk is a parseable AuditEntry.
+    const N = 50;
+    const entries: AuditEntry[] = Array.from({ length: N }, (_, i) => ({
+      timestamp: `2026-04-19T00:00:00.${String(i).padStart(3, '0')}Z`,
+      event: 'sign',
+      metadata: { seq: i },
+    }));
+    await Promise.all(entries.map((e) => storage.appendAudit('concurrent', e)));
+
+    const got = await storage.readAudit('concurrent');
+    expect(got.length).toBe(N);
+    // Every parsed entry must carry its own shape — no interleaved bytes
+    // turned two entries into one corrupt blob.
+    for (const entry of got) {
+      expect(entry.event).toBe('sign');
+      expect(typeof entry.timestamp).toBe('string');
+      expect(entry.metadata).toBeDefined();
+      expect(typeof entry.metadata?.seq).toBe('number');
+    }
+    // And we must have observed every seq 0..N-1 exactly once.
+    const seqs = new Set(got.map((e) => e.metadata?.seq as number));
+    expect(seqs.size).toBe(N);
+    for (let i = 0; i < N; i++) expect(seqs.has(i)).toBe(true);
+  });
+
   it('list ignores non-.json files', async () => {
     await storage.write('good', makeRecord('good'));
     // Create a stray unrelated file in the vault dir.

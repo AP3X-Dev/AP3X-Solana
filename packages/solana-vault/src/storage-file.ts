@@ -35,6 +35,16 @@ export interface FileVaultStorageOptions {
 export class FileVaultStorage implements VaultStorage {
   readonly baseDir: string;
 
+  /**
+   * Serialization chain for `appendAudit`. `fs.appendFile` in Node is not
+   * guaranteed line-atomic across concurrent writers — on Windows especially,
+   * two overlapping appends can interleave bytes and corrupt the JSONL log.
+   * Chaining each append onto the previous promise keeps writes strictly
+   * sequential within one storage instance. Across instances (unlikely: we
+   * expect one `FileVaultStorage` per Vault) this does not help.
+   */
+  #auditChain: Promise<void> = Promise.resolve();
+
   constructor(options: FileVaultStorageOptions = {}) {
     this.baseDir = options.baseDir ?? path.join(os.homedir(), '.ap3x', 'vault');
   }
@@ -105,11 +115,26 @@ export class FileVaultStorage implements VaultStorage {
   }
 
   async appendAudit(name: string, entry: AuditEntry): Promise<void> {
+    // Sanitize synchronously so invalid names throw to the caller immediately
+    // instead of silently swallowing the rejection into `#auditChain`.
+    const auditPath = this.auditPath(name);
+    const next = this.#auditChain.then(() =>
+      this.#doAppendAudit(auditPath, entry),
+    );
+    // Keep the chain alive even after a failed write — otherwise one I/O
+    // error would permanently poison future appends on this instance.
+    this.#auditChain = next.catch(() => {
+      /* swallow to keep chain alive */
+    });
+    return next;
+  }
+
+  async #doAppendAudit(auditPath: string, entry: AuditEntry): Promise<void> {
     await fs.mkdir(this.baseDir, { recursive: true });
     // Each line is a complete JSON object so a torn write can at worst lose
     // the tail line, never corrupt earlier entries.
     const line = `${JSON.stringify(entry)}\n`;
-    await fs.appendFile(this.auditPath(name), line, {
+    await fs.appendFile(auditPath, line, {
       encoding: 'utf-8',
       mode: 0o600,
     });
@@ -120,7 +145,7 @@ export class FileVaultStorage implements VaultStorage {
       const content = await fs.readFile(this.auditPath(name), 'utf-8');
       return content
         .split('\n')
-        .filter((line) => line.length > 0)
+        .filter((line) => line.trim().length > 0)
         .map((line) => JSON.parse(line) as AuditEntry);
     } catch (e: unknown) {
       if (isNodeError(e) && e.code === 'ENOENT') return [];

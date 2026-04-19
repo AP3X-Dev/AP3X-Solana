@@ -117,25 +117,54 @@ export class Vault {
   }
 
   /**
-   * Register a new wallet under `name`. The `secretKey` must be a 32-byte
-   * ed25519 seed; 64-byte Solana-style keypairs are rejected here so callers
-   * don't accidentally persist a redundant pubkey half and double storage.
+   * Add a new wallet to the vault.
+   *
+   * The `secretKey` must be a 32-byte ed25519 seed; 64-byte Solana-style
+   * keypairs are rejected here so callers don't accidentally persist a
+   * redundant pubkey half and double storage.
    *
    * Side effects: a fresh 16-byte random salt is generated, the seed is
    * encrypted under the passphrase-derived key, and a `create` audit entry is
-   * appended. Existing records under the same name are OVERWRITTEN — callers
-   * responsible for avoiding collisions via `list()`.
+   * appended.
+   *
+   * By default, calling `addWallet` for a name that already exists throws —
+   * accidentally overwriting a production key is a footgun we refuse to
+   * offer silently. Pass `{ overwrite: true }` to replace an existing record
+   * intentionally (e.g. after a key rotation).
+   *
+   * **Caller responsibility:** the `secretKey` parameter is defensively copied
+   * into the WalletHandle, but the caller's original buffer is NOT zeroed by
+   * this method. If you derived the seed from a mnemonic or passphrase, zero
+   * the input buffer yourself after this call returns:
+   *
+   *   const seed = deriveFromMnemonic(phrase);
+   *   try { await vault.addWallet(name, role, seed, pp); }
+   *   finally { seed.fill(0); }
+   *
+   * @param name - wallet identifier; must match /^[a-zA-Z0-9_.-]+$/
+   * @param role - caller-chosen operational label (NOT considered secret)
+   * @param secretKey - 32-byte ed25519 seed; caller zeroes after this returns
+   * @param passphrase - >=12 chars, >=3 of {lower, upper, digit, symbol}
+   * @param options.overwrite - default false; pass true to replace existing record
    */
   async addWallet(
     name: string,
     role: string,
     secretKey: Uint8Array,
     passphrase: string,
+    options?: { overwrite?: boolean },
   ): Promise<void> {
     validatePassphrase(passphrase, this.#policy);
     if (secretKey.length !== 32) {
       throw new Error(
         `vault: secretKey must be a 32-byte ed25519 seed (got ${secretKey.length})`,
+      );
+    }
+
+    const existing = await this.#storage.read(name);
+    if (existing && !options?.overwrite) {
+      throw new Error(
+        `vault: wallet '${name}' already exists (pass { overwrite: true } to replace)`,
       );
     }
 
