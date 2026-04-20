@@ -52,3 +52,15 @@ export type {
   TokenAccountHolding,
   GetTokenAccountsByMintOptions,
 } from './holder-queries';
+
+export {
+  SPL_TOKEN_PROGRAM_ID,
+  SPL_TOKEN_2022_PROGRAM_ID,
+  decodeTransferInstruction,
+} from './decoders/transfer-instruction.js';
+export type {
+  InstructionShape,
+  DecodedTransfer,
+} from './decoders/transfer-instruction.js';
+export { parseTransferLog } from './decoders/transfer-log.js';
+export type { ProgramLogChunk } from './decoders/transfer-log.js';
