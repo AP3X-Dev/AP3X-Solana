@@ -6,3 +6,11 @@ export { JitoGrpcSubmitter, type JitoGrpcSubmitterOpts } from './submitters/jito
 export { BundleAccumulator, type BundleAccumulatorOpts } from './bundle-accumulator.js';
 export { InFlightMap } from './in-flight.js';
 export { confirmLanded, type ConfirmLandedOpts, type ConfirmResult } from './confirm-landed.js';
+export {
+  Executor,
+  type ExecutorOpts,
+  type ExecutorEvents,
+  type FeeEstimatorLike,
+  type AssembleFn,
+  type SimulateAndBudgetFn,
+} from './executor.js';
