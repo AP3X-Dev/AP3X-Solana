@@ -229,10 +229,18 @@ export class StrategyRuntime extends EventEmitter {
   /**
    * Deregister a strategy. If `onShutdown` is defined it is dispatched through
    * the queue before the instance is removed from the map.
+   *
+   * An unconditional drain barrier is enqueued first so that any in-flight
+   * tasks (e.g. onSignal dispatches already enqueued) complete before the
+   * record is removed, even when onShutdown is not defined.
    */
   async deregister(instanceId: string): Promise<void> {
     const rec = this.instances.get(instanceId);
     if (!rec) return;
+
+    // Unconditional drain barrier — ensures any in-flight enqueued tasks
+    // (e.g. onSignal dispatches) complete before the record is removed.
+    await rec.queue.enqueue(() => Promise.resolve());
 
     if (rec.strategy.onShutdown) {
       await rec.queue.enqueue(() =>

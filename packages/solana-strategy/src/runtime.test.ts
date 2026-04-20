@@ -669,6 +669,47 @@ describe('Test 9 — deregister', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Test 9b — deregister drains queue even when onShutdown is not defined
+// ---------------------------------------------------------------------------
+
+describe('Test 9b — deregister drains in-flight queue tasks without onShutdown', () => {
+  it('deregister drains queue even when onShutdown is not defined', async () => {
+    const { opts } = makeOpts();
+    const runtime = new StrategyRuntime(opts);
+
+    const log: string[] = [];
+
+    class DrainTestStrategy extends Strategy {
+      readonly name = 'drain-test';
+      readonly filters: SignalFilter[] = [{ kind: 'swap' }];
+      async onSignal(sig: Signal) {
+        log.push(`start-${sig.signalId}`);
+        await new Promise<void>((r) => setTimeout(r, 30));
+        log.push(`end-${sig.signalId}`);
+        return null;
+      }
+      // No onShutdown defined — this is the critical case
+    }
+
+    await runtime.register(new DrainTestStrategy());
+    runtime.start();
+
+    // Push a signal that takes 30 ms inside onSignal
+    void opts.signalQueue.push(makeSignal('swap', 's1'));
+
+    // Yield to let the signal reach the per-instance queue before we deregister
+    await new Promise<void>((res) => setImmediate(res));
+
+    // Deregister immediately — without the drain barrier, 'end-s1' would be missing
+    await runtime.deregister('drain-test');
+
+    expect(log).toEqual(['start-s1', 'end-s1']);
+
+    runtime.stop();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Test 10 — stop() clears tick timer and unsubscribes from signal queue
 // ---------------------------------------------------------------------------
 
