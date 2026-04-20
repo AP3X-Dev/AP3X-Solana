@@ -1,0 +1,30 @@
+{
+  "name": "@ap3x/pumpfun-watch",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "generate-fixture": "tsx scripts/generate-fixture.ts"
+  },
+  "dependencies": {
+    "@ap3x/solana-core": "workspace:*",
+    "@ap3x/solana-connectivity": "workspace:*",
+    "@ap3x/solana-events": "workspace:*",
+    "@ap3x/solana-signals": "workspace:*",
+    "@ap3x/solana-strategy": "workspace:*",
+    "@ap3x/pumpfun-events": "workspace:*",
+    "@ap3x/pumpfun-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "tsup": "^8.3.0"
+  }
+}

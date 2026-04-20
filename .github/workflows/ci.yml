@@ -4,6 +4,10 @@ on:
   push:
     branches: [main, prp-*]
   pull_request:
+  schedule:
+    # 05:17 UTC nightly — avoids common on-the-hour GitHub-Actions contention.
+    # Drives the pumpfun-nightly-diag job (surfaces pump.fun program upgrades).
+    - cron: '17 5 * * *'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -79,3 +83,38 @@ jobs:
             fi
           done
           exit $failed
+
+  # Nightly diag — probes a small sample of recent pump.fun transactions and
+  # fails if the decoder's UnknownEventDecode ratio exceeds 10% on either
+  # program. That threshold surfaces program upgrades (discriminator or layout
+  # drift) before production breaks. Self-skips without HELIUS_API_KEY.
+  #
+  # When this alarms, follow docs/runbook/pumpfun-fixture-refresh.md.
+  pumpfun-nightly-diag:
+    if: github.event_name == 'schedule'
+    name: pumpfun-nightly-diag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (diag imports built @ap3x/pumpfun-events)
+        run: pnpm --filter @ap3x/pumpfun-events build
+
+      - name: Run diag probe
+        run: pnpm --filter @ap3x/pumpfun-events run diag
+        env:
+          HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}

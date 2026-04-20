@@ -1,0 +1,34 @@
+{
+  "name": "@ap3x/pumpfun-events",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "diag": "tsx scripts/diag.ts"
+  },
+  "dependencies": {
+    "@ap3x/solana-core": "workspace:*",
+    "@ap3x/solana-events": "workspace:*",
+    "@ap3x/solana-tx": "workspace:*"
+  },
+  "devDependencies": {
+    "@ap3x/solana-connectivity": "workspace:*",
+    "tsup": "^8.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "@vitest/coverage-v8": "^2.1.0"
+  }
+}
