@@ -1,7 +1,7 @@
 # PRP-03 — Pump.fun vertical, Phase 1: Execution + Safety
 
-**Repo:** `ap3x-solana/` (continues from PRP-01 + PRP-02)
-**Depends on:** PRP-01 (Solana substrate) + PRP-02 (pump.fun protocol)
+**Repo:** `ap3x-solana/` (continues from PRP-01 + PRP-02 + PRP-02.5)
+**Depends on:** PRP-01 (Solana substrate), PRP-02 (Solana runtime), PRP-02.5 (pump.fun protocol)
 **Unblocks:** PRP-04 (signal layer), PRP-05 (platform extraction)
 **Estimate:** 3 weeks solo
 **Master spec:** [00-master-platform-prp.md §6.2-§6.5, §7](./00-master-platform-prp.md)
@@ -12,7 +12,7 @@ Ship the **write path** for pump.fun with **receipt-gated simulation**, **Jito b
 
 ## In scope
 
-### Package `@ap3x/pumpfun-protocol` (extended from PRP-02)
+### Package `@ap3x/pumpfun-protocol` (extended from PRP-02.5)
 
 - **Instruction builders** (pump.fun-specific): `buildBuy(params)`, `buildSell(params)`, `buildCreate(params)`, `buildMigrate(params)`. Each returns `{ programId, accounts, data }` — compatible with any downstream tx compiler. Still no direct signing.
 - **Typed params** — one struct per instruction: `BuyParams`, `SellParams`, `CreateParams`, `MigrateParams`. Strategies never touch raw instruction data.
