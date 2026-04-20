@@ -16,7 +16,8 @@ Signal layer is the **moat**. Anyone can call RPC; not everyone has clean, versi
 
 ### Package `@ap3x/pumpfun-event-store` (new)
 
-- **Storage** — Parquet on object storage (S3/R2 for prod; local filesystem for dev), partitioned by `date`. Columns: `slot`, `block_time`, `signature`, `program_id`, `event_type`, `payload` (typed), `ingest_time`. Immutable, append-only. Schema versioned.
+- **Storage** — Parquet on object storage (S3/R2 for prod; local filesystem for dev), partitioned by `date`. Columns: `slot`, `block_time`, `signature`, `program_id`, `event_type`, `payload` (typed), `ingest_time`, `source_kind` (`on-chain` | `off-chain`). Immutable, append-only. Schema versioned.
+- **Off-chain signal source** — pump.fun's `advanced-api-v2.pump.fun` (trending feeds, creator history, comment counts) and `frontend-api-v3.pump.fun` (single-token detail) ingest as first-class signals here, not as a standalone compat package. Typed client with drift-tolerant parsing; polling cadence configurable per endpoint; captured payloads land in the event store with `source_kind: 'off-chain'` and share the same time-indexing + backtest semantics as on-chain events. This re-homes what was originally scoped as `@ap3x/pumpfun-compat` in PRP-02.5 — off-chain-data-as-a-standalone-package was the wrong architecture; strategies, research tools, and consumer apps (Chad when rebuilt in PRP-12) read both through the signal-layer interface.
 - **Hot index** — DuckDB view over Parquet for signal queries. Query latency target: p95 < 100ms for time-windowed scans on 30 days of data.
 - **Live tap** — Geyser stream (from PRP-01) writes to local DuckDB first, batches to Parquet every N slots. Live-to-queryable lag < 2s.
 - **Historical backfill** — one-time ingest of pump.fun program history (Helius RPC Enhanced APIs or equivalent). Runs against archive once, commits to cold storage.
