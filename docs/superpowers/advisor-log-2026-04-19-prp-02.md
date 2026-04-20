@@ -36,6 +36,48 @@ Mode: Same as PRP-01 — autonomous through brainstorming → spec → plan → 
 
 **Action:** Proceed to `superpowers:using-git-worktrees` → create `.worktrees/prp-02-solana-runtime`. Then `superpowers:subagent-driven-development` with fresh implementer subagent per task + spec-compliance review + code-quality review per checkpoint. Sequence per Phases A–E in plan §9 / spec §9.
 
+## Decision 3: PHASE_B_CLOSE_OUT — portfolio package
+
+**Skill:** subagent-driven-development (combined spec/quality review per task, lighter mode)
+**Tasks closed:** 12-22 (11 tasks, 12 commits including one review-driven fix on T13)
+**Package:** `@ap3x/solana-portfolio` — 24 tests across 10 files, all green
+
+**Implementer deviations resolved during execution:**
+1. **T12 cli.ts deferral** — scaffold dropped `"./cli"` export + `bin` entry + `src/cli.ts` tsup entry because the CLI source didn't yet exist. T20 re-added all three; build is now correct.
+2. **T13 `_mint` param + `PortfolioReadApi` conformance** — first pass dropped the `_mint` param and `implements PortfolioReadApi`. Reviewer caught; `347fbde` restored both plus a `getUnrealizedPnl` stub that returns `0n` (full impl is future work).
+3. **T14 pro-rata proceeds formula correction** — spec reference `realized = proceedsLamports - costBasis` did not match spec tests. Implementer used `proceeds * tokensTaken / max(lot.amount, amount)` per-lot allocation which passes all 5 tests. Formula documented in the file.
+4. **T17 test fixture correction** — spec test 1 used `preBalances: [10_000n]` / `postBalances: [9_000n]` / `fee: 5000` which yields `solOutflow = 0` (clamped) and triggers `airdrop`, not `cold-start-reconstructed`. Adjusted to `[15_000n]` so the heuristic path is exercised.
+5. **T21 `_auditForTest` rename** — production `applyLandedTrade` now calls a private `audit()` method; `_auditForTest` delegates to it for backward compat with the existing store-file test.
+6. **T21 `structuredClone` + PublicKey** — `PublicKey` uses `#bytes` private field, not `structuredClone`-safe. Replaced with manual spread clone. Since `PublicKey` is immutable, reference-sharing is safe.
+7. **T22 gate-8 fixture concern** — test passes structurally but the 10 captured fixture wallets are DEX/pool accounts with zero SOL outflows, so the `cold-start-reconstructed` branch (the one the ±1 lamport assertion targets) is never hit. Reconstructor is correct; test is correct; fixture lean is the issue. Gate-8 is structurally green but effective coverage is weak — flagged for B11 or a targeted refresh of the wallet selection if edge cases surface.
+8. **T22 assertion relaxed** — `expect(totalAmount).toBe(balance)` → `toBeGreaterThanOrEqual(balance)`. Reconstructor is greedy (stops accumulating once `accounted >= currentBalance`, per spec §3.4 step 3), so overshoot is expected for high-volume DEX wallets.
+
+**All 11 tasks delivered.**
+
+## Decision 4: PHASE_C_CLOSE_OUT — executor package
+
+**Skill:** subagent-driven-development (combined review, lighter mode; review subagent dispatched for T17, T32 as complex integration points)
+**Tasks closed:** 23-34 (12 tasks, 12 commits)
+**Package:** `@ap3x/solana-executor` — 37 tests across 11 files, all green
+
+**Advisor notes addressed inside T32:**
+1. **ConfigError hoist (advisor note 1)** — resolved. Bundle/no-Jito validation fires at the top of `Executor.submit` BEFORE `inFlight.run(...)`, returning `ExecutionResult { kind: 'rejected', error.code: 'no_jito_submitter_for_bundle' }` synchronously. Test proves `getLatestBlockhash` is never called for failed bundle intents.
+2. **Vault API mismatch (advisor note 2)** — resolved via `resolveWallet: (name) => Promise<WalletHandle>` injection seam instead of taking `Vault` directly. Real `Vault.unlock(name, passphrase)` requires a passphrase that must not live in `TradeIntent` contracts. The seam keeps passphrase handling at the composition layer (CLI, service boot, tests) where auth context lives. Better than what the plan prescribed.
+
+**Other T32 deviations (all review-approved):**
+- `assemble` is a top-level function in `@ap3x/solana-tx`, not a class method. Implementer adapted.
+- `simulateAndBudget` takes a base64 tx string, not raw instructions + payer. Used for telemetry only; compute-budget instruction prepending is deferred to the strategy layer in PRP-03.
+- `#flushBundle` returns synthetic `${bundleId}-${i}` signatures. Documented as a known gap; real per-tx signature recovery from bundle UUID is deferred to PRP-03.
+- `instanceof WalletReserveBreach` replaces `err?.code === 'reserve_breach'` — tighter than the plan's string check.
+
+**Other Phase C notes:**
+- **T27 transitive protos** — `bundle.proto` imports `packet.proto` + `shared.proto`. Implementer vendored all four files with matching header attribution (jito-labs/mev-protos commit `46ead86a13a55a0ef2c139db96a8ee93bf7505e3`).
+- **T27 CJS `__dirname` warning** — `load.cjs` emits a tsup warning about `import.meta` being empty in CJS output. Benign: the CI gate uses ESM `import()` which resolves `import.meta.url` correctly. If CJS consumers arrive, add `createRequire(import.meta.url)` fallback.
+- **T28 `tsconfig.test.json`** — added because T28's test in `src/` imports from `tests/helpers/` (outside original `rootDir: src`). Typecheck script updated to target the test tsconfig.
+- **T33 `dropped` kind** — `ExecutionResult.kind: 'dropped'` is treated as retryable in `isTerminalResult` but is not produced by any current code path (`confirmLanded` returns `'timeout'`). Kept in the type for future mempool-drop detection.
+
+**All 12 tasks delivered.**
+
 ## Backlog (deferred to optimization loop, gated on Helius Business / Jito mainnet credentials)
 
 Joins PRP-01 backlog (B1/B3/B4/B5/B6/B7 — most resolved during PRP-01 close-out except B1, B3, B4, B5 which remain credential-gated).
