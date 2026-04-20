@@ -119,6 +119,81 @@ Reviewer caught a real T42 runtime bug — `deregister(instanceId)` only awaited
 
 **All 10 tasks delivered.**
 
+## Decision 6: PHASE_E_CLOSE_OUT — example app
+
+**Skill:** subagent-driven-development (combined review per task in lighter mode)
+**Tasks closed:** 45-47 (3 tasks, 4 commits — 3 task commits + 1 follow-up cleanup)
+**Package:** `examples/spl-watcher` — 23 tests (3 e2e + 11 watcher + 9 wallets), all green
+
+**T45 `a9f2999`** — scaffold + bundled fixture. `examples/spl-watcher/` mirrors `examples/solana-watch/`. Fixture `tests/fixtures/signals-spl-watcher.jsonl.gz` contains 50 deterministic SPL transfer signals (10 targeting watched wallet `11111111111111111111111111111112`). `SPL_TOKEN_PROGRAM_ID` was already in spl public exports; no modification needed to `@ap3x/solana-spl/src/index.ts`.
+
+**T46 `8daf076`** — `WatcherStrategy` + `wallets.ts`. Filter on `SPL_TOKEN_PROGRAM_ID + kind: 'spl.transfer'`. Injectable emitter for testability (defaults to `console.log`). Wallet flag parser supports `--wallet ABC` and `--wallet=ABC` forms with base58 validation. `onSignal` returns `null` (observer, not trader).
+
+**T47 `8cc1238` + cleanup `96bf049`** — CLI entry + e2e test. Fully wired source-selection for fixture + historical; Geyser throws TODO pointing to backlog B8. e2e test runs `node dist/index.js` against the bundled fixture and asserts exactly 10 JSON lines emitted. `beforeAll` build step with stale-check optimization. **Implementer caught latent T46 bug:** `decoded.dest.toBase58()` assumed `PublicKey` but `FixtureSignalSource.parseSignal` only hydrates top-level `programId`, leaving nested `decoded.dest` as a base58 string. Widened `WatcherDecoded.dest` to `PublicKey | string` and duck-typed the call. Reviewer flagged two Minors (dead code in parseArgs; missing unit test for string-dest branch) — both fixed in `96bf049`.
+
+**All 3 tasks delivered + bug caught and fixed.**
+
+## Decision 7: PHASE_F_CLOSE_OUT — wrap-up
+
+**Skill:** subagent-driven-development (combined review per task in lighter mode)
+**Tasks closed:** 48-50 (3 tasks, 5 commits — 3 task commits + 2 follow-up fixes)
+
+**T48 `f4fa37a`** — CI coverage thresholds + proto-load gate. Previously: thresholds configured at 80% per package but CI ran `pnpm test` (no coverage), so thresholds were unenforced. Now: added `test:coverage` to 13 workspace packages, CI uses `pnpm -r test:coverage`. All 4 runtime packages + spl-watcher example pass 80% thresholds (branches floor for solana-signals at 81.2% — worth watching). Implementer **added tests** to close coverage gaps (not lowered thresholds): geyser.test.ts +7 tests, historical.test.ts +5 tests, runtime.test.ts +idempotency/factory tests, backtest.test.ts +latency and lifecycle tests. Two `/* v8 ignore next N */` comments on genuinely unreachable paths (backtest's onTick wrapper — `tickIntervalMs: INT32_MAX`; runtime's `tripGuard` idempotency guard — dispatchSignal's quarantine check prevents double-trip). Proto-load gate + forbidden-deps gate preserved.
+
+**T49 `950d560`** — `docs/runtime-architecture.md` (657 lines). Five Mermaid sequence diagrams: live signal flow, cold-start cost-basis reconstruction, backtest flow with substitution points, executor failover + retry, portfolio drift + reconciliation. Six design invariant prose sections: `onError` synchronous semantics, `intentId` derivation with NUL-separator rationale, bundle accumulator non-blocking semantics, per-instance dispatch queue + gate-6 determinism (advisor note 4), `resolveWallet` seam, zero ecosystem deps posture. Known gaps section lists B8-B12 backlog + PRP-03 deferred items. Diagram 5 explicitly notes that `Reconciler.ts` only fires the `onDrift` callback — the composition layer owns reconstruction + applyLandedTrade wiring. All diagrams verified against source before authoring.
+
+**T50 `1f8d9a7` + cleanup `2614a0e`** — `CONTRIBUTING.md` proto rev process + changeset. New "Vendored proto files" section in CONTRIBUTING with 7-step rev process (curl fetch loop, header update, PINNED_COMMIT update, test command, PR title convention, reviewer checklist). Changeset `.changeset/prp-02-runtime-initial-release.md` bumps the 4 runtime packages (`signals`, `strategy`, `executor`, `portfolio`) at `minor` — the `fixed: [["@ap3x/solana-*"]]` group in `.changeset/config.json` auto-bumps the PRP-01 packages too for version alignment. Cleanup `2614a0e` aligned doc's header-format example with actual 4-line format used in committed proto files (`// Vendored from`, `// Source:`, `// Commit:`, `// Retrieved:`).
+
+**All 3 tasks delivered.**
+
+## PRP-02 Summary — 50 tasks across 6 phases
+
+- **Phase A (T1-11):** 11 tasks — signal ingestion layer + SPL decoders + fixture capture scripts
+- **Phase B (T12-22):** 11 tasks — portfolio (store, accounting, swap tracers, reconstructor, reconciler, daily-close, CLI, gate-8 test)
+- **Phase C (T23-34):** 12 tasks — executor (types, submitters, vendored Jito proto, bundle accumulator, in-flight map, confirm-landed, Executor.submit, failover/retry, gate-4/9 tests)
+- **Phase D (T35-44 + 2 fixes):** 10 tasks + 2 follow-up commits — strategy runtime
+- **Phase E (T45-47 + 1 fix):** 3 tasks + 1 follow-up — spl-watcher example
+- **Phase F (T48-50 + 1 fix):** 3 tasks + 1 follow-up — CI coverage + docs
+
+**Total commits on `prp-02-solana-runtime` from Phase D onward:** 19 commits (10 D tasks + 2 D fixes + 3 E tasks + 1 E fix + 3 F tasks + 1 F fix + 2 advisor-log close-outs).
+
+**Test totals (per-package, isolated runs):**
+- @ap3x/solana-core — prior PRP-01
+- @ap3x/solana-connectivity — prior PRP-01
+- @ap3x/solana-events — prior PRP-01
+- @ap3x/solana-spl — prior PRP-01
+- @ap3x/solana-metaplex — prior PRP-01
+- @ap3x/solana-vault — prior PRP-01
+- @ap3x/solana-tx — prior PRP-01
+- @ap3x/solana-signals — 32 tests (Phase A + T48 additions)
+- @ap3x/solana-portfolio — 24 tests (Phase B)
+- @ap3x/solana-executor — 37 tests (Phase C)
+- @ap3x/solana-strategy — 117 tests (Phase D + T48 additions)
+- examples/spl-watcher — 23 tests (Phase E)
+- examples/solana-watch — prior PRP-01
+
+**Acceptance gates (PRP §5):**
+- Gate 1 (signal ingestion end-to-end): T44 `e2e-fixture.test.ts` ✓
+- Gate 2 (strategy dispatch ordering / FIFO per instance): T38 `instance-queue.test.ts` + T44 `e2e-fixture` ✓
+- Gate 3 (restart recovery): T44 `restart-recovery.test.ts` (Option B — FileStrategyStateStore-based, Windows-friendly; signal-source-level replay deferred to PRP-03) ✓
+- Gate 4 (vault reserve breach): T34 executor ✓
+- Gate 5 (failover + retry): T33 executor ✓
+- Gate 6 (backtest byte-identical determinism): T43 `backtest.test.ts` (verified 5/5 runs) ✓
+- Gate 7 (drift + reconcile): T18 reconciler unit + T44 `drift-reconcile.test.ts` integration ✓
+- Gate 8 (cost-basis ±1 lamport accuracy): T22 `gate-8-cost-basis-accuracy.test.ts` ✓ (10-wallet fixture; B11 optional expansion)
+- Gate 9 (Jito HTTP/gRPC parity): T34 `jito-parity.test.ts` ✓
+- Gate 10 (lifecycle fidelity / graceful shutdown): T44 `lifecycle-fidelity.test.ts` ✓
+- Gate 11 (zero ecosystem deps): CI `Verify no forbidden deps` step ✓
+- Gate 12 (80% coverage): T48 enforcement via `pnpm -r test:coverage` ✓
+- Gate 13 (eslint-boundaries enforcement): T1 PRP-01 + existing rules ✓
+
+**Known issues / technical debt not blocking PRP-02:**
+1. **Pre-existing Phase A typecheck regression** in `packages/solana-signals/src/signal-queue.test.ts:10` (`PublicKey` assigned to `string`-typed `ProgramLogChunk.programId`; Phase A commit `1da6883`). Phase A unit tests pass in isolation; only `pnpm typecheck` fails. Recommend a Phase A regression sweep or PRP-03 backlog.
+2. **Turbo concurrent-test flakes on Windows** — three I/O-heavy tests timeout at 5000ms under heavy parallel Turbo load (FixtureSignalSource AbortSignal, gate-8 cost-basis, portfolio cli). All pass in isolation. Likely cause: Windows filesystem + gzip decompression overhead under concurrent processes. Mitigation: raise `testTimeout` to 10000ms in the affected vitest configs, OR lower Turbo concurrency for tests. Non-blocking for PRP-02 scope (CI may need to be pinned to single-threaded test execution).
+3. **`onBalanceChange` hook unwired** — defined in `Strategy` interface but no runtime event drives it. Deferred to PRP-03 (balance subscription).
+4. **Per-tx signature recovery from Jito bundle UUID** — `#flushBundle` synthesizes `${bundleId}-${i}` signatures. Deferred to PRP-03.
+5. **Historical / Geyser example paths** in `spl-watcher` CLI are best-effort. Geyser throws a TODO; Historical compiles but lives-gate is B8/B10 backlog.
+
 ## Backlog (deferred to optimization loop, gated on Helius Business / Jito mainnet credentials)
 
 Joins PRP-01 backlog (B1/B3/B4/B5/B6/B7 — most resolved during PRP-01 close-out except B1, B3, B4, B5 which remain credential-gated).
