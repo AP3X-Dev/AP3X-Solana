@@ -19,6 +19,7 @@
     "diag": "pnpm --filter @ap3x/solana-connectivity diag",
     "capture:spl": "node --import tsx tests/helpers/capture/spl-capture.ts",
     "capture:metaplex": "node --import tsx tests/helpers/capture/metaplex-capture.ts",
+    "capture:cold-start-tx-history": "node --import tsx tests/helpers/capture/capture-cold-start-tx-history.ts",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "turbo run build && changeset publish"
