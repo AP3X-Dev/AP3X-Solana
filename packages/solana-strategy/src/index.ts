@@ -19,3 +19,5 @@ export type { GuardConfig, GuardTrip } from './guards.js';
 export { GuardTracker } from './guards.js';
 export type { AdaptOpts, RpcPoolLike } from './landed-trade-adapter.js';
 export { adaptToLandedTrades } from './landed-trade-adapter.js';
+export { StrategyRuntime } from './runtime.js';
+export type { StrategyRuntimeOpts, ExecutorLike, PortfolioLike } from './runtime.js';
