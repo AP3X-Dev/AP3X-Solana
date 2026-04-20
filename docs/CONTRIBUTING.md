@@ -73,6 +73,54 @@ pnpm diag --check             # CI-mode probes; exits non-zero on failure
 3. Commit the generated changeset file alongside your code change.
 4. On release, run `pnpm version-packages` then `pnpm release`.
 
+## Vendored proto files
+
+### Jito proto files
+
+The `@ap3x/solana-executor` package vendors Jito's `searcher.proto`, `bundle.proto`, `packet.proto`, and `shared.proto` under `packages/solana-executor/src/proto/`. These are pinned to a specific upstream commit (`PINNED_COMMIT` in `packages/solana-executor/src/proto/load.ts`). A CI gate (`Verify Jito proto loads`) runs `loadSearcherProto()` on every build to catch accidental proto breakage.
+
+**Why vendor?** `jito-labs/mev-protos` is not published to npm. Downloading at build time introduces a remote dependency that can fail transiently or be modified without notice. Vendoring + pinning gives us reproducible builds and lets us review every proto change.
+
+**When to rev the pin:**
+- Upstream adds a new message field we need (e.g., a new tip-account selection knob).
+- Upstream changes an existing field type (breaking change).
+- Upstream deprecates a field we use.
+
+**How to rev the pin:**
+
+1. Pick the new commit from `https://github.com/jito-labs/mev-protos/commits/master`. Prefer a tagged release when available.
+
+2. Fetch the four proto files at that commit:
+   ```bash
+   COMMIT=<new-commit-sha>
+   for f in searcher.proto bundle.proto packet.proto shared.proto; do
+     curl -sSfL "https://raw.githubusercontent.com/jito-labs/mev-protos/${COMMIT}/${f}" \
+       -o "packages/solana-executor/src/proto/${f}"
+   done
+   ```
+
+3. Update the header comment in each proto file to reference the new commit (the existing header format: `// Vendored from jito-labs/mev-protos at commit <sha>`).
+
+4. Update `PINNED_COMMIT` in `packages/solana-executor/src/proto/load.ts` to the new SHA.
+
+5. Run the executor test suite locally:
+   ```bash
+   pnpm --filter @ap3x/solana-executor test
+   ```
+   All proto-sensitive tests (`submitters/jito-grpc.test.ts`, `tests/jito-parity.test.ts`) must pass.
+
+6. Commit as a single PR with title `executor: bump Jito proto pin to <short-sha>`. The PR body should link the upstream commit and summarize the upstream changes (what fields added/changed/removed, and why we're taking it in).
+
+7. Proto-rev reviewer checklist (for the reviewer):
+   - New commit exists in `jito-labs/mev-protos` master history (no force-pushes).
+   - All 4 files updated together (no partial updates).
+   - Header comments updated to match new SHA.
+   - CI's `Verify Jito proto loads` passes.
+   - Submitter tests pass.
+   - No new dependencies added to `packages/solana-executor/package.json`.
+
+**When NOT to rev:** if the change is purely cosmetic (whitespace, comments in upstream), skip the rev. Pins should only move when we need the change.
+
 ## Fixture capture
 
 When Helius / Triton / QuickNode credentials are available, run capture scripts to refresh on-chain reference fixtures:
