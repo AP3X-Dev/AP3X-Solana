@@ -36,6 +36,7 @@ export default [
       'packages/*/tests/fixtures/**',
       'packages/*/scripts/**',
       'packages/solana-connectivity/src/proto/**',
+      'packages/solana-executor/src/proto/**',
       'tests/helpers/capture/**',
       '**/*.d.ts',
     ],
