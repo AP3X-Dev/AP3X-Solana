@@ -8,6 +8,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@ap3x/solana-strategy': path.resolve(__dirname, 'src/index.ts'),
+      // Integration tests (tests/) import FilePortfolioStore as a value; the
+      // portfolio dist may not be built in CI, so point at the source directly.
+      '@ap3x/solana-portfolio': path.resolve(__dirname, '../solana-portfolio/src/index.ts'),
     },
   },
   test: {
