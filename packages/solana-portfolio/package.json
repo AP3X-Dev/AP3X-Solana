@@ -10,8 +10,13 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
     }
   },
+  "bin": { "ap3x-portfolio": "./dist/cli.js" },
   "files": ["dist"],
   "scripts": {
     "build": "tsup",
