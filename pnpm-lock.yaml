@@ -126,6 +126,31 @@ importers:
         specifier: workspace:*
         version: link:../solana-tx
 
+  packages/solana-portfolio:
+    dependencies:
+      '@ap3x/solana-connectivity':
+        specifier: workspace:*
+        version: link:../solana-connectivity
+      '@ap3x/solana-core':
+        specifier: workspace:*
+        version: link:../solana-core
+      '@ap3x/solana-events':
+        specifier: workspace:*
+        version: link:../solana-events
+      '@ap3x/solana-spl':
+        specifier: workspace:*
+        version: link:../solana-spl
+    devDependencies:
+      tsup:
+        specifier: ^8.3.0
+        version: 8.5.1(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@20.19.39)(msw@2.13.4(@types/node@20.19.39)(typescript@5.9.3))
+
   packages/solana-signals:
     dependencies:
       '@ap3x/solana-connectivity':
