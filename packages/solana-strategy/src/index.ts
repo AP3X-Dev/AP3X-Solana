@@ -12,3 +12,4 @@ export type {
 } from './context.js';
 export { FileStrategyStateStore } from './state-store-file.js';
 export type { FileStrategyStateStoreOpts } from './state-store-file.js';
+export { InstanceQueue } from './instance-queue.js';
