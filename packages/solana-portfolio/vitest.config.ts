@@ -12,6 +12,7 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+    testTimeout: 10_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

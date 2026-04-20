@@ -3,11 +3,23 @@ import { SignalQueue } from './signal-queue.js';
 import type { Signal } from './signal.js';
 import { PublicKey } from '@ap3x/solana-core';
 
+const SYSTEM_PROGRAM = '11111111111111111111111111111111';
+
 const mkSignal = (id: string): Signal => ({
   signalId: id,
   ts: 0, slot: 0, signature: id,
-  programId: PublicKey.fromBase58('11111111111111111111111111111111'),
-  kind: 'test', decoded: {}, raw: { programId: PublicKey.fromBase58('11111111111111111111111111111111'), accounts: [], logs: [], inner: [] },
+  programId: PublicKey.fromBase58(SYSTEM_PROGRAM),
+  kind: 'test',
+  decoded: {},
+  raw: {
+    programId: SYSTEM_PROGRAM,
+    depth: 1,
+    success: true,
+    logs: [],
+    dataPayloads: [],
+    children: [],
+    rawLines: [],
+  },
 });
 
 describe('SignalQueue', () => {
