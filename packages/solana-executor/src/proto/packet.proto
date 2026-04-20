@@ -1,0 +1,39 @@
+// Vendored from https://github.com/jito-labs/mev-protos
+// Source: packet.proto
+// Commit: 46ead86a13a55a0ef2c139db96a8ee93bf7505e3
+// Retrieved: 2026-04-19
+// License: Apache-2.0 (jito-labs/mev-protos)
+//
+// Transitive dependency of bundle.proto. Do NOT edit by hand — to bump,
+// re-fetch all four files (searcher.proto, bundle.proto, packet.proto,
+// shared.proto) from the same pinned commit or a newer one, update the hash
+// in this header, and re-run tests.
+syntax = "proto3";
+
+package packet;
+
+message PacketBatch {
+  repeated Packet packets = 1;
+}
+
+message Packet {
+  bytes data = 1;
+  Meta meta = 2;
+}
+
+message Meta {
+  uint64 size = 1;
+  string addr = 2;
+  uint32 port = 3;
+  PacketFlags flags = 4;
+  uint64 sender_stake = 5;
+}
+
+message PacketFlags {
+  bool discard = 1;
+  bool forwarded = 2;
+  bool repair = 3;
+  bool simple_vote_tx = 4;
+  bool tracer_packet = 5;
+  bool from_staked_node = 6;
+}

@@ -1,0 +1,28 @@
+// Vendored from https://github.com/jito-labs/mev-protos
+// Source: shared.proto
+// Commit: 46ead86a13a55a0ef2c139db96a8ee93bf7505e3
+// Retrieved: 2026-04-19
+// License: Apache-2.0 (jito-labs/mev-protos)
+//
+// Transitive dependency of bundle.proto. Do NOT edit by hand — to bump,
+// re-fetch all four files (searcher.proto, bundle.proto, packet.proto,
+// shared.proto) from the same pinned commit or a newer one, update the hash
+// in this header, and re-run tests.
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package shared;
+
+message Header {
+  google.protobuf.Timestamp ts = 1;
+}
+
+message Heartbeat {
+  uint64 count = 1;
+}
+
+message Socket {
+  string ip = 1;
+  int64 port = 2;
+}

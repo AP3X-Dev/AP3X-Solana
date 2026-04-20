@@ -44,8 +44,11 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Test (unit + coverage)
-        run: pnpm test
+      - name: Test (unit + coverage enforcement)
+        run: pnpm -r test:coverage
+
+      - name: Verify Jito proto loads
+        run: pnpm --filter @ap3x/solana-executor exec node -e 'import("./dist/proto/load.js").then((m) => m.loadSearcherProto())'
 
       # Substrate posture gate: none of the following may appear in the
       # resolved dependency graph. `pnpm why <pkg>` exits 0 and prints the

@@ -36,6 +36,7 @@ export default [
       'packages/*/tests/fixtures/**',
       'packages/*/scripts/**',
       'packages/solana-connectivity/src/proto/**',
+      'packages/solana-executor/src/proto/**',
       'tests/helpers/capture/**',
       '**/*.d.ts',
     ],
@@ -68,6 +69,10 @@ export default [
         { type: 'metaplex', pattern: 'packages/solana-metaplex/src/**' },
         { type: 'events', pattern: 'packages/solana-events/src/**' },
         { type: 'vault', pattern: 'packages/solana-vault/src/**' },
+        { type: 'signals', pattern: 'packages/solana-signals/src/**' },
+        { type: 'portfolio', pattern: 'packages/solana-portfolio/src/**' },
+        { type: 'executor', pattern: 'packages/solana-executor/src/**' },
+        { type: 'strategy', pattern: 'packages/solana-strategy/src/**' },
         { type: 'example', pattern: 'examples/**/src/**' },
       ],
       // We key the boundary check off the workspace package name so that
@@ -98,6 +103,10 @@ export default [
             { from: 'metaplex', allow: ['core', 'tx'] },
             { from: 'events', allow: ['core'] },
             { from: 'vault', allow: ['core'] },
+            { from: 'signals', allow: ['core', 'connectivity', 'events'] },
+            { from: 'portfolio', allow: ['core', 'connectivity', 'events', 'spl'] },
+            { from: 'executor', allow: ['core', 'connectivity', 'tx', 'vault'] },
+            { from: 'strategy', allow: ['core', 'signals', 'executor', 'portfolio', 'vault'] },
             {
               from: 'example',
               allow: [
@@ -108,6 +117,10 @@ export default [
                 'metaplex',
                 'events',
                 'vault',
+                'signals',
+                'strategy',
+                'executor',
+                'portfolio',
               ],
             },
           ],
@@ -170,6 +183,32 @@ export default [
               name: '@ap3x/solana-connectivity',
               message:
                 'solana-spl and solana-metaplex must not import @ap3x/solana-connectivity directly; thread RpcPool through as a parameter or type instead.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // Scope `@ap3x/solana-portfolio`'s access to `@ap3x/solana-spl` to allow only
+  // the SPL transfer decoders + `getAssociatedTokenAddress`. Other SPL exports
+  // (TokenMint, TokenAccount, decodeMint, decodeTokenAccount, ALT builders, etc.)
+  // belong to the decoder/builder layer and must not leak into portfolio.
+  {
+    files: ['packages/solana-portfolio/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@ap3x/solana-spl',
+              importNames: [
+                'TokenMint', 'TokenAccount', 'decodeMint', 'decodeTokenAccount',
+                'createAssociatedTokenAccountIx', 'getTokenLargestAccounts', 'getTokenAccountsByMint',
+              ],
+              message:
+                'solana-portfolio may import only the SPL transfer decoders + getAssociatedTokenAddress from @ap3x/solana-spl. Other SPL exports belong to the decoder/builder layer.',
             },
           ],
         },
