@@ -3,7 +3,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { PublicKey } from '@ap3x/solana-core';
 import type { PortfolioReadApi } from './portfolio-read-api.js';
-import type { Position, LotSource } from './types.js';
+import type { Position, LotSource, LandedTrade, PositionChange } from './types.js';
+import { reduceLots } from './accounting.js';
 
 export interface FilePortfolioStoreOpts {
   dir?: string;
@@ -110,13 +111,95 @@ export class FilePortfolioStore extends EventEmitter implements PortfolioReadApi
 
   /** Test-only: append a raw audit entry. */
   async _auditForTest(wallet: PublicKey, entry: AuditEntry): Promise<void> {
-    await fs.mkdir(this.dir, { recursive: true });
-    await fs.appendFile(this.auditPathFor(wallet), JSON.stringify(entry) + '\n');
+    await this.audit(wallet, entry);
+  }
+
+  async applyLandedTrade(trade: LandedTrade): Promise<PositionChange[]> {
+    return this.withMutex(trade.wallet.toBase58(), async () => {
+      const data = (await this.loadWalletData(trade.wallet)) ?? { positions: [], realizedPnl: 0n };
+      const idx = data.positions.findIndex((p) => p.mint.equals(trade.mint));
+
+      // Manually clone `before` to avoid structuredClone failing on PublicKey private fields.
+      const existingPos = idx >= 0 ? data.positions[idx]! : null;
+      const before: Position | null = existingPos
+        ? {
+            mint: existingPos.mint,
+            walletAddress: existingPos.walletAddress,
+            lastUpdatedSlot: existingPos.lastUpdatedSlot,
+            lots: existingPos.lots.map((l) => ({ ...l })),
+          }
+        : null;
+
+      let pos: Position = existingPos ?? {
+        mint: trade.mint,
+        walletAddress: trade.wallet,
+        lots: [],
+        lastUpdatedSlot: 0,
+      };
+
+      if (trade.amountDelta > 0n) {
+        const lot = {
+          amount: trade.amountDelta,
+          costBasisLamports: trade.solFlowLamports < 0n ? -trade.solFlowLamports : 0n,
+          acquiredSlot: trade.slot,
+          acquiredSig: trade.signature,
+          source: 'trade' as const,
+        };
+        pos = { ...pos, lots: [...pos.lots, lot], lastUpdatedSlot: trade.slot };
+      } else if (trade.amountDelta < 0n) {
+        const proceeds = trade.solFlowLamports > 0n ? trade.solFlowLamports : 0n;
+        const r = reduceLots(pos.lots, -trade.amountDelta, proceeds, 'fifo');
+        data.realizedPnl += r.realized;
+        pos = { ...pos, lots: r.remaining, lastUpdatedSlot: trade.slot };
+        this.emit('realized-pnl', {
+          wallet: trade.wallet,
+          mint: trade.mint,
+          realized: r.realized,
+          costBasis: r.costBasis,
+          proceeds: r.proceeds,
+          basisUnresolved: r.basisUnresolved,
+          slot: trade.slot,
+        });
+      }
+
+      if (idx >= 0) {
+        data.positions[idx] = pos;
+      } else {
+        data.positions.push(pos);
+      }
+
+      await this.writeWalletData(trade.wallet, data);
+      await this.audit(trade.wallet, {
+        ts: Date.now(),
+        event: 'apply-landed-trade',
+        meta: {
+          sig: trade.signature,
+          slot: trade.slot,
+          mint: trade.mint.toBase58(),
+          amountDelta: trade.amountDelta.toString(),
+        },
+      });
+
+      const change: PositionChange = {
+        wallet: trade.wallet,
+        mint: trade.mint,
+        before,
+        after: pos,
+        reason: 'apply-landed-trade',
+      };
+      this.emit('change', change);
+      return [change];
+    });
   }
 
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  private async audit(wallet: PublicKey, entry: AuditEntry): Promise<void> {
+    await fs.mkdir(this.dir, { recursive: true });
+    await fs.appendFile(this.auditPathFor(wallet), JSON.stringify(entry) + '\n');
+  }
 
   private async loadWalletData(wallet: PublicKey): Promise<WalletData | null> {
     try {
