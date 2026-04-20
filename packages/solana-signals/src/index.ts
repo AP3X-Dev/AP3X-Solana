@@ -11,3 +11,4 @@ export {
 } from './checkpoint-store.js';
 export { FixtureSignalSource, type FixtureSignalSourceOpts } from './sources/fixture.js';
 export { HistoricalSignalSource, type HistoricalSignalSourceOpts } from './sources/historical.js';
+export { GeyserSignalSource, type GeyserSignalSourceOpts } from './sources/geyser.js';
