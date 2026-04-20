@@ -8,6 +8,7 @@ export { InFlightMap } from './in-flight.js';
 export { confirmLanded, type ConfirmLandedOpts, type ConfirmResult } from './confirm-landed.js';
 export {
   Executor,
+  BUMP_PROGRESSION,
   type ExecutorOpts,
   type ExecutorEvents,
   type FeeEstimatorLike,

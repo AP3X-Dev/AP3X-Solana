@@ -56,9 +56,18 @@ import { InFlightMap } from './in-flight.js';
 import type { SubmissionAck, Submitter } from './submitter.js';
 import type {
   ExecutionResult,
+  FeeTier,
   Instruction as ExecutorInstruction,
   TradeIntent,
 } from './types.js';
+
+/**
+ * Fee-tier progression used by the retry loop when
+ * `intent.retry.bumpProgression === true`. Each dropped/timeout/transient
+ * failure advances one step up this ladder; past `turbo` the tier stops
+ * climbing and retries re-submit at the top of the progression.
+ */
+export const BUMP_PROGRESSION: FeeTier[] = ['low', 'med', 'high', 'turbo'];
 
 /**
  * Minimum {@link PriorityFeeEstimator} surface we consume — typed as the
@@ -122,6 +131,13 @@ export interface ExecutorEvents {
   result: (r: ExecutionResult) => void;
   'budget-fallback': (evt: { intentId: string; reason: string }) => void;
   'fee-tier': (evt: { intentId: string; tier: TradeIntent['feeTier']; microLamportsPerCu: number }) => void;
+  /**
+   * Fired at the start of every execution attempt — 1-indexed. Emitted before
+   * wallet resolution / assembly / submission, so a correlated log/metric
+   * pipeline sees one `executor.attempt` per retry irrespective of which
+   * phase the previous attempt failed in.
+   */
+  'executor.attempt': (evt: { intentId: string; attempt: number; feeTier: FeeTier }) => void;
 }
 
 export class Executor extends EventEmitter {
@@ -153,12 +169,31 @@ export class Executor extends EventEmitter {
 
   /**
    * Submit an intent. Returns the terminal {@link ExecutionResult} —
-   * `landed`, `reverted`, `timeout`, or `rejected`. Duplicate `intentId`s
-   * share a single in-flight slot and receive the same resolution.
+   * `landed`, `reverted`, `timeout`, `dropped`, or `rejected`. Duplicate
+   * `intentId`s share a single in-flight slot and receive the same resolution.
    *
    * Advisor note 1: the bundle/no-Jito-submitter validation fires BEFORE
    * `inFlight.run`, so a misconfigured caller gets a synchronous rejection
    * at the API boundary without poisoning the in-flight map.
+   *
+   * Retry semantics (`intent.retry`):
+   *   - `maxAttempts` (default 1) — total number of attempts including the
+   *     first. `0` is normalised to `1` — `submit` never executes zero times.
+   *   - `bumpProgression` (default false) — when true, each retry advances
+   *     the fee tier per {@link BUMP_PROGRESSION}; at `turbo` the tier
+   *     plateaus. When false, retries re-execute at the caller's tier
+   *     (useful for transient RPC failover).
+   *
+   * Retryable results: `timeout` (deadline-based drop from
+   * {@link confirmLanded}), `dropped`, and `rejected` with a transient code
+   * (`submit_failed`, `blockhash_fetch_failed`, `bundle_flush_failed`,
+   * `no_submitter`). Terminal results that short-circuit the loop:
+   * `landed`, `reverted`, and `rejected` with `reserve_breach`, `sign_failed`,
+   * `wallet_locked`, or `no_jito_submitter_for_bundle`.
+   *
+   * The retry loop lives INSIDE `inFlight.run` — a duplicate `intentId`
+   * attaches to the existing slot and shares the final result after all
+   * retries complete, rather than kicking off a parallel retry cycle.
    */
   async submit(intent: TradeIntent): Promise<ExecutionResult> {
     if (intent.submitter?.bundleGroup !== undefined) {
@@ -176,7 +211,50 @@ export class Executor extends EventEmitter {
         );
       }
     }
-    return this.#inFlight.run(intent.intentId, () => this.#execute(intent));
+    return this.#inFlight.run(intent.intentId, () => this.#runWithRetry(intent));
+  }
+
+  /**
+   * Drive the retry loop around {@link #execute}. Emits `executor.attempt`
+   * for every attempt (1-indexed) and returns the first terminal result —
+   * either a short-circuit (landed/reverted/reserve_breach) or the final
+   * attempt's result when retries are exhausted.
+   */
+  async #runWithRetry(intent: TradeIntent): Promise<ExecutionResult> {
+    const rawMax = intent.retry?.maxAttempts ?? 1;
+    // Normalise 0 / undefined / negative to 1 — `submit` never runs 0 times.
+    const maxAttempts = rawMax > 0 ? rawMax : 1;
+    const bumpProgression = intent.retry?.bumpProgression ?? false;
+
+    let currentTier: FeeTier = intent.feeTier;
+    let lastResult: ExecutionResult | undefined;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      this.emit('executor.attempt', {
+        intentId: intent.intentId,
+        attempt,
+        feeTier: currentTier,
+      });
+
+      const attemptIntent: TradeIntent = { ...intent, feeTier: currentTier };
+      const result = await this.#execute(attemptIntent);
+      lastResult = result;
+
+      if (isTerminalResult(result)) return result;
+
+      // Retryable — bump tier for the next attempt when progression is on.
+      if (bumpProgression && attempt < maxAttempts) {
+        const idx = BUMP_PROGRESSION.indexOf(currentTier);
+        if (idx >= 0 && idx < BUMP_PROGRESSION.length - 1) {
+          currentTier = BUMP_PROGRESSION[idx + 1]!;
+        }
+        // If we're already at the top of the progression (or the starting tier
+        // wasn't in the ladder), we plateau — retries keep the same tier.
+      }
+    }
+
+    // `lastResult` is defined: the loop runs at least once (maxAttempts >= 1).
+    return lastResult!;
   }
 
   // ---- private ----------------------------------------------------------
@@ -440,4 +518,29 @@ function adaptInstruction(ix: ExecutorInstruction): TxInstruction {
     keys: ix.accounts,
     data: ix.data,
   };
+}
+
+/**
+ * `rejected` error codes that represent a permanent, non-retryable failure.
+ * Anything else in the rejected branch is treated as transient (e.g. RPC
+ * hiccup, blockhash service flap, submitter fault) and the retry loop will
+ * re-execute the intent.
+ */
+const TERMINAL_REJECT_CODES: ReadonlySet<string> = new Set([
+  'reserve_breach',
+  'sign_failed',
+  'wallet_locked',
+  'no_jito_submitter_for_bundle',
+]);
+
+/**
+ * A result is terminal — i.e. the retry loop stops — when it's either
+ * a successful on-chain outcome (landed / reverted), or a `rejected` with
+ * a permanent error code. `timeout`, `dropped`, and transient rejections
+ * are retryable.
+ */
+function isTerminalResult(r: ExecutionResult): boolean {
+  if (r.kind === 'landed' || r.kind === 'reverted') return true;
+  if (r.kind === 'rejected') return TERMINAL_REJECT_CODES.has(r.error.code);
+  return false;
 }
