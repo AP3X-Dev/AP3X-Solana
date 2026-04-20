@@ -74,6 +74,7 @@ export default [
         { type: 'executor', pattern: 'packages/solana-executor/src/**' },
         { type: 'strategy', pattern: 'packages/solana-strategy/src/**' },
         { type: 'pumpfun-events', pattern: 'packages/pumpfun-events/src/**' },
+        { type: 'pumpfun-protocol', pattern: 'packages/pumpfun-protocol/src/**' },
         { type: 'example', pattern: 'examples/**/src/**' },
       ],
       // We key the boundary check off the workspace package name so that
@@ -109,6 +110,7 @@ export default [
             { from: 'executor', allow: ['core', 'connectivity', 'tx', 'vault'] },
             { from: 'strategy', allow: ['core', 'signals', 'executor', 'portfolio', 'vault'] },
             { from: 'pumpfun-events', allow: ['core', 'events', 'tx'] },
+            { from: 'pumpfun-protocol', allow: ['core', 'connectivity', 'events', 'spl', 'metaplex', 'tx', 'pumpfun-events'] },
             {
               from: 'example',
               allow: [
