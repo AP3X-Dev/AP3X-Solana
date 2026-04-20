@@ -12,3 +12,5 @@ export { buildCreate } from './instructions/create.js';
 export { buildBuy } from './instructions/buy.js';
 export { buildSell } from './instructions/sell.js';
 export { buildPumpSwapSwap } from './instructions/pumpswap-swap.js';
+export * from './routing.js';
+export { PumpFunClient } from './client.js';
