@@ -10,3 +10,5 @@ export type {
   MetricsEmitter,
   StrategyStateStore,
 } from './context.js';
+export { FileStrategyStateStore } from './state-store-file.js';
+export type { FileStrategyStateStoreOpts } from './state-store-file.js';
