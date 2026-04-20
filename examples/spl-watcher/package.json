@@ -8,6 +8,7 @@
     "build": "tsup",
     "dev": "tsx src/index.ts",
     "test": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",

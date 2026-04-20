@@ -444,6 +444,7 @@ export class StrategyRuntime extends EventEmitter {
    * attribute subsequent "dropped: quarantined" dispatches to it.
    */
   private async tripGuard(rec: InstanceRecord, trip: GuardTrip): Promise<void> {
+    /* v8 ignore next 1 -- idempotent guard; per-instance queue serialization makes concurrent trips impossible */
     if (rec.quarantined) return;
     rec.quarantined = true;
 

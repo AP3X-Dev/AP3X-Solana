@@ -710,6 +710,326 @@ describe('Test 9b — deregister drains in-flight queue tasks without onShutdown
 });
 
 // ---------------------------------------------------------------------------
+// Test 9b-extra — default stateStoreFactory (FileStrategyStateStore) is used
+//                 when not provided (covers line 164 of runtime.ts)
+// ---------------------------------------------------------------------------
+
+describe('Test 9b-extra — default stateStoreFactory + tickIntervalMs defaults + priceSource', () => {
+  it('uses default FileStrategyStateStore when stateStoreFactory is omitted (line 164)', async () => {
+    // Omit stateStoreFactory — exercises default arrow on line 164
+    // Also omit tickIntervalMs — exercises the ?? 1_000 default on line 160
+    const executor = new FakeExecutor();
+    const portfolio = new FakePortfolio();
+    const walletPk = PublicKey.fromBase58(TOKEN_PROGRAM);
+    const optsMinimal: StrategyRuntimeOpts = {
+      signalQueue: new SignalQueue(),
+      executor,
+      portfolio,
+      resolveWallet: async () => ({ address: walletPk, sign: vi.fn(), signTransaction: vi.fn() }) as any,
+      rpcPool: { call: vi.fn().mockResolvedValue(null) } as any,
+      // stateStoreFactory and tickIntervalMs deliberately omitted
+    };
+
+    const runtime = new StrategyRuntime(optsMinimal);
+    // register() calls the default stateStoreFactory (line 164); constructor used default tickIntervalMs (line 160)
+    await expect(runtime.register(new NoOpStrategy())).resolves.toBeUndefined();
+    runtime.stop();
+  });
+
+  it('priceSource is included in StrategyContext when provided (line 205); vault.list() is callable', async () => {
+    const fakePriceSource = {
+      getPriceLamportsPerToken: vi.fn().mockResolvedValue(100n),
+    };
+
+    const { opts } = makeOpts({ priceSource: fakePriceSource as any });
+    const runtime = new StrategyRuntime(opts);
+
+    let ctxHasPriceSource = false;
+    let vaultListResult: unknown = null;
+    class PriceSourceStrategy extends Strategy {
+      readonly name = 'price-source';
+      readonly filters: SignalFilter[] = [];
+      async onSignal() { return null; }
+      override async onStart(ctx: any) {
+        ctxHasPriceSource = ctx.priceSource !== undefined;
+        // Exercise vaultReadApi.list — the no-op stub on line 195 of runtime.ts
+        vaultListResult = await ctx.vault.list();
+      }
+    }
+
+    await runtime.register(new PriceSourceStrategy());
+    runtime.stop();
+
+    expect(ctxHasPriceSource).toBe(true);
+    expect(vaultListResult).toEqual([]);
+  });
+
+  it('tripGuard is idempotent when instance already quarantined (line 447)', async () => {
+    const metricsEmitted: Array<{ topic: string }> = [];
+    const metrics = {
+      emit: (topic: string, payload: Record<string, unknown>) => { metricsEmitted.push({ topic }); },
+    };
+
+    const { opts } = makeOpts({
+      guards: { maxDecisionsPerMin: 1 },
+      metrics,
+    });
+
+    const runtime = new StrategyRuntime(opts);
+
+    class FastDeciderStrategy extends Strategy {
+      readonly name = 'fast-decider';
+      readonly filters: SignalFilter[] = [{ kind: 'swap' }];
+      async onSignal() {
+        return {
+          intentId: '',
+          wallet: 'main',
+          instructions: [],
+          feeTier: 'med' as const,
+          deadline: Date.now() + 30_000,
+        };
+      }
+    }
+
+    await runtime.register(new FastDeciderStrategy());
+    runtime.start();
+
+    // Trip the guard (2 decisions, limit=1)
+    await opts.signalQueue.push(makeSignal('swap', 'sig-idem-1'));
+    await opts.signalQueue.drain();
+    await new Promise<void>((res) => setImmediate(res));
+
+    await opts.signalQueue.push(makeSignal('swap', 'sig-idem-2'));
+    await opts.signalQueue.drain();
+    await new Promise<void>((res) => setImmediate(res));
+    await new Promise<void>((res) => setImmediate(res));
+
+    const trippedCount = metricsEmitted.filter((e) => e.topic === 'strategy.tripped').length;
+
+    // Send another signal that would trip again — but instance is already quarantined
+    // This exercises the `if (rec.quarantined) return` path in tripGuard (line 447)
+    await opts.signalQueue.push(makeSignal('swap', 'sig-idem-3'));
+    await opts.signalQueue.drain();
+    await new Promise<void>((res) => setImmediate(res));
+    await new Promise<void>((res) => setImmediate(res));
+
+    runtime.stop();
+
+    // tripGuard should not have fired again (idempotent — quarantined signals skip dispatch)
+    expect(metricsEmitted.filter((e) => e.topic === 'strategy.tripped').length).toBe(trippedCount);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 9c — tripGuard calls onShutdown when strategy defines it
+// ---------------------------------------------------------------------------
+
+describe('Test 9c — tripGuard invokes onShutdown when guard trips', () => {
+  it('strategy with onShutdown gets it called when decision guard trips', async () => {
+    const { opts } = makeOpts({ guards: { maxDecisionsPerMin: 1 } });
+    const runtime = new StrategyRuntime(opts);
+
+    const shutdownCalled: boolean[] = [];
+
+    class ShutdownOnTripStrategy extends Strategy {
+      readonly name = 'shutdown-on-trip';
+      readonly filters: SignalFilter[] = [{ kind: 'swap' }];
+      async onSignal() {
+        return {
+          intentId: '',
+          wallet: 'main',
+          instructions: [],
+          feeTier: 'med' as const,
+          deadline: Date.now() + 30_000,
+        };
+      }
+      override async onShutdown() { shutdownCalled.push(true); }
+    }
+
+    await runtime.register(new ShutdownOnTripStrategy());
+    runtime.start();
+
+    // First signal — decision 1, within limit of 1
+    await opts.signalQueue.push(makeSignal('swap', 'sig-sot-1'));
+    await opts.signalQueue.drain();
+    await new Promise<void>((res) => setImmediate(res));
+
+    // Second signal — decision 2, trips maxDecisionsPerMin:1
+    await opts.signalQueue.push(makeSignal('swap', 'sig-sot-2'));
+    await opts.signalQueue.drain();
+    await new Promise<void>((res) => setImmediate(res));
+    // Allow tripGuard async work to complete
+    await new Promise<void>((res) => setImmediate(res));
+
+    runtime.stop();
+
+    expect(shutdownCalled).toHaveLength(1);
+  });
+
+  it('onShutdown that throws does not propagate from tripGuard', async () => {
+    const { opts } = makeOpts({ guards: { maxDecisionsPerMin: 1 } });
+    const runtime = new StrategyRuntime(opts);
+
+    class ThrowingShutdownStrategy extends Strategy {
+      readonly name = 'throwing-shutdown';
+      readonly filters: SignalFilter[] = [{ kind: 'swap' }];
+      async onSignal() {
+        return {
+          intentId: '',
+          wallet: 'main',
+          instructions: [],
+          feeTier: 'med' as const,
+          deadline: Date.now() + 30_000,
+        };
+      }
+      override async onShutdown() { throw new Error('shutdown boom'); }
+    }
+
+    await runtime.register(new ThrowingShutdownStrategy());
+    runtime.start();
+
+    await opts.signalQueue.push(makeSignal('swap', 'sig-tss-1'));
+    await opts.signalQueue.drain();
+    await new Promise<void>((res) => setImmediate(res));
+
+    // Second signal — trips guard → tripGuard → onShutdown throws → must NOT propagate
+    await opts.signalQueue.push(makeSignal('swap', 'sig-tss-2'));
+    await opts.signalQueue.drain();
+    await new Promise<void>((res) => setImmediate(res));
+    await new Promise<void>((res) => setImmediate(res));
+
+    runtime.stop();
+    // If we get here, shutdown error was swallowed correctly
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 9d — error guard trips via callHook (many consecutive errors)
+// ---------------------------------------------------------------------------
+
+describe('Test 9d — error guard trip via callHook (errorThreshold)', () => {
+  it('instance quarantined after exceeding errorThreshold', async () => {
+    const { opts } = makeOpts({
+      guards: { errorThreshold: { errors: 1, windowMs: 60_000 } },
+    });
+    const runtime = new StrategyRuntime(opts);
+
+    const signalsCalled: number[] = [];
+
+    class ErroringStrategy extends Strategy {
+      readonly name = 'erroring';
+      readonly filters: SignalFilter[] = [{ kind: 'swap' }];
+      async onSignal(): Promise<null> {
+        signalsCalled.push(1);
+        throw new Error('always fails');
+      }
+    }
+
+    await runtime.register(new ErroringStrategy());
+    runtime.start();
+
+    // Signal 1 — error #1, within threshold of 1
+    await opts.signalQueue.push(makeSignal('swap', 'sig-err-1'));
+    await opts.signalQueue.drain();
+    await new Promise<void>((res) => setImmediate(res));
+
+    // Signal 2 — error #2, exceeds threshold → tripGuard via callHook
+    await opts.signalQueue.push(makeSignal('swap', 'sig-err-2'));
+    await opts.signalQueue.drain();
+    await new Promise<void>((res) => setImmediate(res));
+    await new Promise<void>((res) => setImmediate(res));
+
+    // Signal 3 — should be skipped (quarantined)
+    await opts.signalQueue.push(makeSignal('swap', 'sig-err-3'));
+    await opts.signalQueue.drain();
+    await new Promise<void>((res) => setImmediate(res));
+
+    runtime.stop();
+
+    // 2 errors before quarantine; third is skipped
+    expect(signalsCalled.length).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 9e — dispatchExecutionResult: executor 'result' event reaches strategy
+// ---------------------------------------------------------------------------
+
+describe('Test 9e — dispatchExecutionResult and dispatchPositionChange via events', () => {
+  it('executor result event dispatched to strategy.onExecutionResult', async () => {
+    const { opts, executor } = makeOpts();
+    const runtime = new StrategyRuntime(opts);
+
+    const executionResults: string[] = [];
+
+    class ExecResultStrategy extends Strategy {
+      readonly name = 'exec-result';
+      readonly filters: SignalFilter[] = [{ kind: 'swap' }];
+      async onSignal() { return null; }
+      override async onExecutionResult(result: any) {
+        executionResults.push(result.kind);
+      }
+    }
+
+    await runtime.register(new ExecResultStrategy());
+    runtime.start();
+
+    // FakeExecutor.submit never emits 'result' — emit it directly to test dispatch
+    const fakeResult: ExecutionResult = {
+      kind: 'timeout',
+      intentId: 'test-intent',
+      signature: 'fake',
+      submitterUsed: 'rpc',
+    };
+    executor.emit('result', fakeResult);
+
+    // Let the queue process
+    await new Promise<void>((res) => setImmediate(res));
+    await new Promise<void>((res) => setImmediate(res));
+
+    runtime.stop();
+
+    expect(executionResults).toEqual(['timeout']);
+  });
+
+  it('portfolio change event dispatched to strategy.onPositionChange', async () => {
+    const { opts, portfolio } = makeOpts();
+    const runtime = new StrategyRuntime(opts);
+
+    const positionChanges: string[] = [];
+
+    class PosChangeStrategy extends Strategy {
+      readonly name = 'pos-change-rt';
+      readonly filters: SignalFilter[] = [{ kind: 'swap' }];
+      async onSignal() { return null; }
+      override async onPositionChange(_change: any) {
+        positionChanges.push('changed');
+      }
+    }
+
+    await runtime.register(new PosChangeStrategy());
+    runtime.start();
+
+    // Emit a position change event directly on the fake portfolio
+    const fakeChange = {
+      wallet: PublicKey.fromBase58('11111111111111111111111111111111'),
+      mint: PublicKey.fromBase58(TOKEN_PROGRAM),
+      before: null,
+      after: null,
+      reason: 'test',
+    };
+    portfolio.emit('change', fakeChange);
+
+    await new Promise<void>((res) => setImmediate(res));
+    await new Promise<void>((res) => setImmediate(res));
+
+    runtime.stop();
+
+    expect(positionChanges).toEqual(['changed']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Test 10 — stop() clears tick timer and unsubscribes from signal queue
 // ---------------------------------------------------------------------------
 

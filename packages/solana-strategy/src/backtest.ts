@@ -454,6 +454,9 @@ class InstrumentedStrategy extends Strategy {
       };
     }
     if (inner.onTick) {
+      // v8 ignore next 4 — runBacktest sets tickIntervalMs to MAX_INT so onTick
+      // is never dispatched during a signal-driven backtest run.
+      /* v8 ignore next 4 */
       this.onTick = async (tsMs, ctx) => {
         this.logPhase('onTick', { tsMs });
         await inner.onTick!(tsMs, ctx);

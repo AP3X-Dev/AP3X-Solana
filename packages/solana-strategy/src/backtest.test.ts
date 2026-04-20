@@ -187,6 +187,23 @@ describe('runBacktest — gate 6 determinism', () => {
 // Test 2 — Landing failures with landingSuccessRate < 1.0 are deterministic
 // ---------------------------------------------------------------------------
 
+describe('runBacktest — latency simulation (minLatencyMs > 0)', () => {
+  it('exercises the latency simulation block when minLatencyMs is set', async () => {
+    const fixturePath = writeFixture('latency.jsonl.gz', [FIXTURE_SIGNALS_5[0]!]);
+    const clock = makeCounterClock(12_000);
+
+    const result = await runBacktest({
+      strategy: new AlwaysDecideStrategy(),
+      fixtureSource: new FixtureSignalSource({ path: fixturePath }),
+      clock,
+      simulatedExecutor: { minLatencyMs: 1, maxLatencyMs: 5 },
+    });
+
+    // With 1 swap signal and latency, we get 1 decision
+    expect(result.trades).toHaveLength(1);
+  });
+});
+
 describe('runBacktest — deterministic landing failures', () => {
   it('passes through landing failures (landingSuccessRate < 1.0) deterministically', async () => {
     const fixturePath = writeFixture('landing.jsonl.gz', FIXTURE_SIGNALS_5);
@@ -329,6 +346,143 @@ describe('runBacktest — intentToTrade provided', () => {
 
     // No sells → no realized PnL
     expect(result.realizedPnl).toBe(0n);
+  });
+
+  it('fires onStart and onShutdown lifecycle hooks when strategy defines them', async () => {
+    const fixturePath = writeFixture('lifecycle.jsonl.gz', FIXTURE_SIGNALS_5);
+    const clock = makeCounterClock(8000);
+
+    const lifecyclePhases: string[] = [];
+
+    class LifecycleStrategy extends Strategy {
+      readonly name = 'lifecycle';
+      readonly filters: SignalFilter[] = [{ kind: 'swap' }];
+      async onSignal() { return null; }
+      override async onStart() { lifecyclePhases.push('onStart'); }
+      override async onShutdown() { lifecyclePhases.push('onShutdown'); }
+    }
+
+    await runBacktest({
+      strategy: new LifecycleStrategy(),
+      fixtureSource: new FixtureSignalSource({ path: fixturePath }),
+      clock,
+    });
+
+    expect(lifecyclePhases).toContain('onStart');
+    expect(lifecyclePhases).toContain('onShutdown');
+  });
+
+  it('fires onExecutionResult when strategy defines it', async () => {
+    const fixturePath = writeFixture('exec-result.jsonl.gz', FIXTURE_SIGNALS_5);
+    const clock = makeCounterClock(9000);
+
+    const executionResults: string[] = [];
+
+    class ExecResultStrategy extends Strategy {
+      readonly name = 'exec-result';
+      readonly filters: SignalFilter[] = [{ kind: 'swap' }];
+      async onSignal() {
+        return {
+          intentId: '',
+          wallet: 'main',
+          instructions: [],
+          feeTier: 'med' as const,
+          deadline: 9_999_999_999,
+        };
+      }
+      override async onExecutionResult(result: ExecutionResult) {
+        executionResults.push(result.kind);
+      }
+    }
+
+    await runBacktest({
+      strategy: new ExecResultStrategy(),
+      fixtureSource: new FixtureSignalSource({ path: fixturePath }),
+      clock,
+    });
+
+    // runBacktest default has landingSuccessRate=1.0, so all decisions land
+    expect(executionResults.length).toBeGreaterThan(0);
+    expect(executionResults.every((k) => k === 'landed' || k === 'timeout')).toBe(true);
+  });
+
+  it('fires onPositionChange when strategy defines it and trades land', async () => {
+    const mint = makeMintPk();
+    const fixturePath = writeFixture('pos-change.jsonl.gz', [FIXTURE_SIGNALS_5[0]!]);
+    const clock = makeCounterClock(10_000);
+
+    const positionChanges: string[] = [];
+
+    const intentToTrade = (
+      _intent: TradeIntent,
+      result: ExecutionResult,
+    ): LandedTrade[] => {
+      if (result.kind !== 'landed') return [];
+      const r = result as { kind: 'landed'; signature: string; slot: number };
+      return [{
+        signature: r.signature,
+        slot: r.slot,
+        wallet: PublicKey.fromBase58(SYSTEM_PROGRAM),
+        mint,
+        amountDelta: 50n,
+        solFlowLamports: -500n,
+        feeLamports: 5000n,
+        source: 'executor',
+      }];
+    };
+
+    class PositionChangeStrategy extends Strategy {
+      readonly name = 'pos-change';
+      readonly filters: SignalFilter[] = [{ kind: 'swap' }];
+      async onSignal() {
+        return {
+          intentId: '',
+          wallet: 'main',
+          instructions: [],
+          feeTier: 'med' as const,
+          deadline: 9_999_999_999,
+        };
+      }
+      override async onPositionChange() {
+        positionChanges.push('change');
+      }
+    }
+
+    await runBacktest({
+      strategy: new PositionChangeStrategy(),
+      fixtureSource: new FixtureSignalSource({ path: fixturePath }),
+      clock,
+      intentToTrade,
+    });
+
+    // 1 swap signal → 1 decision → 1 landed trade → portfolio emits 'change' → onPositionChange fires
+    expect(positionChanges).toHaveLength(1);
+  });
+
+  it('fires onError when strategy defines it and a hook throws', async () => {
+    const fixturePath = writeFixture('onerror.jsonl.gz', [FIXTURE_SIGNALS_5[0]!]);
+    const clock = makeCounterClock(11_000);
+
+    const errorPhases: string[] = [];
+
+    class ErrorableStrategy extends Strategy {
+      readonly name = 'errorable';
+      readonly filters: SignalFilter[] = [{ kind: 'swap' }];
+      async onSignal(): Promise<null> {
+        throw new Error('intentional');
+      }
+      override onError(_err: Error, phase: string) {
+        errorPhases.push(phase);
+      }
+    }
+
+    await runBacktest({
+      strategy: new ErrorableStrategy(),
+      fixtureSource: new FixtureSignalSource({ path: fixturePath }),
+      clock,
+    });
+
+    expect(errorPhases).toContain('onSignal');
   });
 
   it('realizes PnL when intentToTrade produces a sell after a buy', async () => {
