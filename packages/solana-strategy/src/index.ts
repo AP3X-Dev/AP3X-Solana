@@ -13,3 +13,5 @@ export type {
 export { FileStrategyStateStore } from './state-store-file.js';
 export type { FileStrategyStateStoreOpts } from './state-store-file.js';
 export { InstanceQueue } from './instance-queue.js';
+export type { IntentIdInput } from './intent-id.js';
+export { intentId } from './intent-id.js';
