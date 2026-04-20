@@ -17,7 +17,7 @@
     "build": "tsup",
     "test": "vitest run",
     "lint": "eslint src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
     "@ap3x/solana-core": "workspace:*",
