@@ -79,6 +79,12 @@ class FakePortfolio extends EventEmitter implements PortfolioLike {
     this.emit('change', change);
     return [change];
   }
+
+  // PortfolioReadApi stubs — satisfy widened PortfolioLike interface
+  async getPosition(_wallet: PublicKey, _mint: PublicKey) { return null; }
+  async getAllPositions(_wallet: PublicKey) { return []; }
+  async getRealizedPnl(_wallet: PublicKey, _mint: PublicKey) { return 0n; }
+  async getUnrealizedPnl(_wallet: PublicKey, _mint: PublicKey, _currentPriceLamports: bigint) { return 0n; }
 }
 
 /** Fake RpcPool — returns empty for getTransaction (adapter returns []). */

@@ -33,6 +33,7 @@ import type { Signal } from '@ap3x/solana-signals';
 import type { SignalQueue } from '@ap3x/solana-signals';
 import type { ExecutionResult, TradeIntent } from '@ap3x/solana-executor';
 import type { PositionChange, LandedTrade } from '@ap3x/solana-portfolio';
+import type { PortfolioReadApi } from '@ap3x/solana-portfolio';
 import type { WalletHandle } from '@ap3x/solana-vault';
 
 import { Strategy, type HookPhase } from './strategy.js';
@@ -60,9 +61,10 @@ export interface ExecutorLike {
 
 /**
  * Minimal portfolio surface consumed by StrategyRuntime. The real
- * FilePortfolioStore satisfies this interface.
+ * FilePortfolioStore satisfies this interface. Extends PortfolioReadApi so
+ * that StrategyContext.portfolio can be assigned without a cast.
  */
-export interface PortfolioLike {
+export interface PortfolioLike extends PortfolioReadApi {
   applyLandedTrade(trade: LandedTrade): Promise<PositionChange[]>;
   on(event: string, handler: (...args: unknown[]) => void): unknown;
 }
@@ -196,7 +198,7 @@ export class StrategyRuntime extends EventEmitter {
     // exactOptionalPropertyTypes: only include priceSource when defined so
     // we don't assign `undefined` to an optional field that expects absence.
     const ctx: StrategyContext = {
-      portfolio: this.opts.portfolio as any, // PortfolioLike satisfies PortfolioReadApi for the fields strategies use
+      portfolio: this.opts.portfolio, // PortfolioLike extends PortfolioReadApi — no cast needed
       vault: vaultReadApi,
       state,
       metrics: this.metrics,
