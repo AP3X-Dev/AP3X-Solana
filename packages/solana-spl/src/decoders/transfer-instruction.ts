@@ -10,23 +10,23 @@
  */
 
 import { PublicKey } from '@ap3x/solana-core';
+import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '../program-ids.js';
 
 /**
  * SPL Token v1 program ID (`TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`).
  *
- * Aliased here so decoder consumers can reference it directly without
- * importing `@ap3x/solana-spl/program-ids`.
+ * Alias of {@link TOKEN_PROGRAM_ID} from program-ids.ts. Exported here so
+ * decoder consumers can reference it directly without importing
+ * `@ap3x/solana-spl/program-ids`.
  */
-export const SPL_TOKEN_PROGRAM_ID = /* @__PURE__ */ PublicKey.fromBase58(
-  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
-);
+export const SPL_TOKEN_PROGRAM_ID = TOKEN_PROGRAM_ID;
 
 /**
  * SPL Token-2022 program ID (`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`).
+ *
+ * Alias of {@link TOKEN_2022_PROGRAM_ID} from program-ids.ts.
  */
-export const SPL_TOKEN_2022_PROGRAM_ID = /* @__PURE__ */ PublicKey.fromBase58(
-  'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb',
-);
+export const SPL_TOKEN_2022_PROGRAM_ID = TOKEN_2022_PROGRAM_ID;
 
 /** Minimal instruction shape consumed by the decoder. */
 export interface InstructionShape {
