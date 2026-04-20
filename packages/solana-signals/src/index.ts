@@ -9,3 +9,4 @@ export {
   type SignalCheckpoint,
   type FileSignalCheckpointStoreOpts,
 } from './checkpoint-store.js';
+export { FixtureSignalSource, type FixtureSignalSourceOpts } from './sources/fixture.js';
