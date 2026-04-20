@@ -1,0 +1,56 @@
+{
+  "capturedAt": "2026-04-20T02:50:14.950Z",
+  "rpcEndpoint": "https://mainnet.helius-rpc.com/",
+  "wallets": [
+    {
+      "wallet": "C24NRTfzW32Fno4VjuZh8eELHGhBNr47t4WYbVjoC4DV",
+      "mint": "FMCbcgFjvkovA6EhD6Wb4HNXeMDFemo1A2xmzVyEpump",
+      "sigCount": 7
+    },
+    {
+      "wallet": "6sNCzEPhSGzEBrWosb9sR8ArToXYSjb6rPaasd5LAin5",
+      "mint": "Gp3JLnbtp6uBFWXgybHqR6Go5VA7jZ3CK6vJwic99Ssz",
+      "sigCount": 1000
+    },
+    {
+      "wallet": "5wdxYVYoiLhcadfsiXLhE38gM7fYLd6rcKFT26LEhb4N",
+      "mint": "D2XuGaCdR1hWVn4FL2abMPdVooiwsLZwXFrJNnbC8W2M",
+      "sigCount": 12
+    },
+    {
+      "wallet": "HLnpSz9h2S4hiLQ43rnSD9XkcUThA7B8hQMKmDaiTLcC",
+      "mint": "So11111111111111111111111111111111111111112",
+      "sigCount": 1000
+    },
+    {
+      "wallet": "5VeXACsBLZB4fuviBw2cUCySMz5u6sR3VtvXHq7NLjav",
+      "mint": "u6PryyvBU8yzgK8PhfmZpkrxdA5Wib5u7SEzMCWpump",
+      "sigCount": 49
+    },
+    {
+      "wallet": "DtLcSus1gsfDwpATTFigVySZX1y2fXzTHs7eU7XcFeNz",
+      "mint": "VVWAy5U2KFd1p8AdchjUxqaJbZPBeP5vUQRZtAy8hyc",
+      "sigCount": 159
+    },
+    {
+      "wallet": "Hc1noJnsNeVs9rMQcXPdyf15mRxoUGhBTgbieEz9iNii",
+      "mint": "4aiYdzv3yp6naZE6HnJDFAF9TmrGyJbDvgiULBGZmoon",
+      "sigCount": 6
+    },
+    {
+      "wallet": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+      "mint": "So11111111111111111111111111111111111111112",
+      "sigCount": 1000
+    },
+    {
+      "wallet": "FK4W4JDhqcyfY6dxEeYFtfUtfMpd1pS2vU79dQLwDFFq",
+      "mint": "DFM5rJdnj6RxsFDEsjiUkW6KCUSCsyJwsLLVx5pvmoon",
+      "sigCount": 4
+    },
+    {
+      "wallet": "8psNvWTrdNTiVRNzAgsou9kETXNJm2SXZyaKuJraVRtf",
+      "mint": "Dx2yTAnMjbzdoiuSLKyjS6L3reofiquXnuvgxsp6bonk",
+      "sigCount": 1000
+    }
+  ]
+}
