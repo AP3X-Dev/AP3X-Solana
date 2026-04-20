@@ -8,3 +8,4 @@ export * from './creator.js';
 export * from './fetch-recent-trades.js';
 export * from './instructions/params.js';
 export * from './instructions/account-derivation.js';
+export { buildCreate } from './instructions/create.js';
