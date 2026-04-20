@@ -21,6 +21,7 @@
     "capture:metaplex": "node --import tsx tests/helpers/capture/metaplex-capture.ts",
     "capture:cold-start-tx-history": "node --import tsx tests/helpers/capture/capture-cold-start-tx-history.ts",
     "capture:pumpfun-per-variant": "tsx tests/helpers/capture/capture-pumpfun-per-variant.ts",
+    "capture:pumpfun-lifecycle": "tsx tests/helpers/capture/capture-pumpfun-lifecycle.ts",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "turbo run build && changeset publish"
