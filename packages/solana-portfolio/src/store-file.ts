@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { PublicKey } from '@ap3x/solana-core';
+import type { PortfolioReadApi } from './portfolio-read-api.js';
 import type { Position, LotSource } from './types.js';
 
 export interface FilePortfolioStoreOpts {
@@ -52,7 +53,7 @@ interface WalletData {
  *   JSON replacer, and decoded via a matching reviver, so u64-max survives a
  *   round-trip through JSON without precision loss.
  */
-export class FilePortfolioStore extends EventEmitter {
+export class FilePortfolioStore extends EventEmitter implements PortfolioReadApi {
   private readonly dir: string;
   private readonly mutexes = new Map<string, Promise<void>>();
 
@@ -70,8 +71,13 @@ export class FilePortfolioStore extends EventEmitter {
     return (await this.loadWalletData(wallet))?.positions ?? [];
   }
 
-  async getRealizedPnl(wallet: PublicKey): Promise<bigint> {
-    return (await this.loadWalletData(wallet))?.realizedPnl ?? 0n;
+  async getRealizedPnl(wallet: PublicKey, _mint: PublicKey): Promise<bigint> {
+    const data = await this.loadWalletData(wallet);
+    return data?.realizedPnl ?? 0n;
+  }
+
+  async getUnrealizedPnl(_wallet: PublicKey, _mint: PublicKey, _currentPriceLamports: bigint): Promise<bigint> {
+    return 0n;
   }
 
   async readAudit(wallet: PublicKey): Promise<AuditEntry[]> {
@@ -179,10 +185,6 @@ export class FilePortfolioStore extends EventEmitter {
       return await fn();
     } finally {
       resolveOuter();
-      // Clean up the entry when nothing else is queued behind us
-      if (this.mutexes.get(key) === prev.then(() => next).catch(() => next)) {
-        this.mutexes.delete(key);
-      }
     }
   }
 }
