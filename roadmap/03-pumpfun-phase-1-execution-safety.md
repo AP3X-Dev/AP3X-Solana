@@ -12,11 +12,9 @@ Ship the **write path** for pump.fun with **receipt-gated simulation**, **Jito b
 
 ## In scope
 
-### Package `@ap3x/pumpfun-protocol` (extended from PRP-02.5)
+### Relies on `@ap3x/pumpfun-protocol` from PRP-02.5
 
-- **Instruction builders** (pump.fun-specific): `buildBuy(params)`, `buildSell(params)`, `buildCreate(params)`, `buildMigrate(params)`. Each returns `{ programId, accounts, data }` — compatible with any downstream tx compiler. Still no direct signing.
-- **Typed params** — one struct per instruction: `BuyParams`, `SellParams`, `CreateParams`, `MigrateParams`. Strategies never touch raw instruction data.
-- **Routing** — unified `buy(mint, params)` and `sell(mint, params)` that internally route to bonding-curve or PumpSwap AMM based on `CurveState.complete`. Strategies use the unified API.
+- Instruction builders (`buildCreate`, `buildBuy`, `buildSell`, `buildPumpSwapSwap`), typed params (`CreateParams`, `BuyParams`, `SellParams`, `PumpSwapSwapParams`), and unified `buy(mint, params)` / `sell(mint, params)` routing across the graduation boundary all ship in PRP-02.5. PRP-03 consumes them unchanged; nothing to extend here.
 
 ### Package `@ap3x/solana-tx` (extended from PRP-01)
 
