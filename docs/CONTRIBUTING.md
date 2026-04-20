@@ -99,7 +99,13 @@ The `@ap3x/solana-executor` package vendors Jito's `searcher.proto`, `bundle.pro
    done
    ```
 
-3. Update the header comment in each proto file to reference the new commit (the existing header format: `// Vendored from jito-labs/mev-protos at commit <sha>`).
+3. Update the header comment in each proto file to the standard 4-line format:
+   ```
+   // Vendored from https://github.com/jito-labs/mev-protos
+   // Source: <filename>.proto
+   // Commit: <new-commit-sha>
+   // Retrieved: YYYY-MM-DD
+   ```
 
 4. Update `PINNED_COMMIT` in `packages/solana-executor/src/proto/load.ts` to the new SHA.
 
