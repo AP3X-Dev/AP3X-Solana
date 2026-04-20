@@ -78,6 +78,47 @@ Mode: Same as PRP-01 — autonomous through brainstorming → spec → plan → 
 
 **All 12 tasks delivered.**
 
+## Decision 5: PHASE_D_CLOSE_OUT — strategy package
+
+**Skill:** subagent-driven-development (combined review per task in lighter mode)
+**Tasks closed:** 35-44 (10 tasks, 12 commits — 10 task commits + 2 follow-up fixes)
+**Package:** `@ap3x/solana-strategy` — 117 tests across 12 files, all green; 116 + 1 regression test added with the deregister fix
+
+**Carryovers from Phase C applied at T42:**
+1. **`resolveWallet` seam (carryover 1)** — resolved. Runtime takes `resolveWallet: (name) => Promise<WalletHandle>` instead of `vault: Vault`. The plan body's `vault.unlock(name, '')` was wrong and got swapped for the Phase C-style injection seam. `VaultReadApi.getAddress` in `StrategyContext` delegates via `(await resolveWallet(name)).address`.
+2. **`executor.submit` inside per-instance queue (advisor note 4)** — resolved. The entire `onSignal → guard → intentId → executor.submit → adaptToLandedTrades → applyLandedTrade` chain runs inside a single `rec.queue.enqueue` callback. Code comment cites "Advisor note 4 / gate-6 determinism".
+3. **`dropped` kind handling** — resolved by T41 adapter early-return (returns `[]` for any non-`landed` kind).
+4. **No `feeEstimator.tier()` in runtime** — confirmed; strategies set `intent.feeTier`, executor handles tier resolution.
+5. **No compute-budget instruction prepending** — confirmed; deferred to PRP-03 strategy authors.
+
+**T42 follow-up fix (`7678598`)** — `PortfolioLike` widened to `extends PortfolioReadApi` so the runtime's `StrategyContext.portfolio` no longer needs an `as any` cast. `FilePortfolioStore` already satisfies the widened interface.
+
+**T43 deviations (advisor note 3 — `runBacktest` full impl):**
+1. **Conditional hook installation in `InstrumentedStrategy`** — only installs optional hook overrides (`onStart`, `onShutdown`, `onPositionChange`, `onTick`, etc.) when the inner strategy defines them. Unconditional installation would fire hooks the strategy doesn't have, consuming clock ticks in async-unpredictable order between runs and breaking gate-6 byte-identical output.
+2. **`tickIntervalMs: 2_147_483_647` (= INT32_MAX)** — Node.js silently clamps overflowed 32-bit `setInterval` values to 1ms; setting it to exactly INT32_MAX (~596 hours) ensures the tick timer never fires during a backtest run without triggering the clamp. Cleaner long-term: T49 architecture doc could note that `tickIntervalMs: 0` skip support would be a useful runtime addition.
+3. **Latency simulation advances clock counter, not real-time `await`** — `for` loop calls `clock()` to bump the deterministic counter; preserves the "what would happen with real RPC latency" intent without breaking determinism.
+4. **`intentToTrade` opt-in callback (Option C)** — strategies that want backtest portfolio tracking supply `(intent, result) => LandedTrade[]`. Default returns `[]`. Reasoning: `intent.instructions` are opaque to the runtime, so trade reconstruction can't be done generically — the strategy author knows the semantics. Mulberry32 PRNG seeded at 0 per run.
+5. **`reduceLots` not exported** from `@ap3x/solana-portfolio`'s public API — replicated inline in `backtest.ts` as `inlineReduceLotsFifo`. Acceptable for the backtest harness (separate from production accounting); proper FIFO is exercised in T21/T22 portfolio tests.
+6. **Gate-6 verified 5/5 runs** — reviewer ran the determinism test five times in isolation; byte-identical output every time.
+
+**T44 deviations (Phase D integration tests):**
+1. **Gate 3 — Option B (FileStrategyStateStore-based) instead of child-process SIGKILL** — Windows lacks SIGKILL without `tree-kill`; Option B tests the same durability contract at the strategy layer (two sequential runtime instantiations sharing a `FileStrategyStateStore` directory; second run skips already-seen signalIds). Documented in test comment; signal-source-level GeyserSignalSource checkpoint replay deferred to PRP-03.
+2. **`@ap3x/solana-portfolio` dist stale workaround** — `FilePortfolioStore` was missing from `dist/index.d.ts` because Phase B never ran `pnpm build` after adding it to `src/index.ts`. Test harness uses a vitest alias pointing at portfolio source as a permanent solution (workspace packages should resolve from source in dev). CI runs `pnpm build` before `pnpm test` (verified in `.github/workflows/ci.yml:44`), so dist is always fresh in CI.
+3. **`onBalanceChange` hook unwired** — defined in `Strategy` but no runtime event drives it. Test 3d in `lifecycle-fidelity.test.ts` documents the gap; balance subscription wiring deferred to PRP-03.
+4. **`tests/_helpers.ts` shared fakes** — `FakeExecutor`, `FakePortfolio`, `MemStateStore`, `makeRuntimeOpts`, `makeSignal`, `writeFixtureGzip`, `drainQueue`. Imported by all 4 integration test files.
+
+**T44 follow-up fix (`c548f2e`) — `deregister()` drain barrier:**
+Reviewer caught a real T42 runtime bug — `deregister(instanceId)` only awaited the queue if `onShutdown` was defined. Without `onShutdown`, in-flight `onSignal` (or other) tasks were silently dropped when `instances.delete(...)` ran immediately. Fixed with an unconditional `await rec.queue.enqueue(() => Promise.resolve())` barrier at the top of `deregister`. Added test 9b — strategy with no `onShutdown` and a 30ms `onSignal`; deregister fires immediately; assertion that the 30ms hook fully completes (`['start-s1', 'end-s1']`) before deregister returns.
+
+**Test totals after Phase D:**
+- 117 strategy tests across 12 files
+- 86 + 31 = 117 (T35-T43 unit tests + T44 integration tests + T44 follow-up regression test)
+- Full monorepo test run green
+- Lint: 0 errors monorepo-wide; 6 pre-existing `no-explicit-any` warnings in test fixtures (not introduced by Phase D)
+- Typecheck monorepo: 1 pre-existing failure in `@ap3x/solana-signals/src/signal-queue.test.ts:10` (Phase A commit `1da6883` — `PublicKey` assigned to a `string`-typed `ProgramLogChunk.programId`). Outside Phase D scope; should be fixed in a Phase A regression sweep or noted in PRP-03 backlog.
+
+**All 10 tasks delivered.**
+
 ## Backlog (deferred to optimization loop, gated on Helius Business / Jito mainnet credentials)
 
 Joins PRP-01 backlog (B1/B3/B4/B5/B6/B7 — most resolved during PRP-01 close-out except B1, B3, B4, B5 which remain credential-gated).
