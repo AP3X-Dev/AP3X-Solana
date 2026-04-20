@@ -59,10 +59,8 @@ function parseArgs(argv: string[]): ParsedArgs {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    // Skip --wallet flags — handled by parseWalletFlags below.
+    // Skip --wallet/--wallet=... tokens; their values are handled by parseWalletFlags.
     if (arg === '--wallet' || arg.startsWith('--wallet=')) continue;
-    // Also skip the value after --wallet.
-    if (arg === '--wallet') { i++; continue; }
 
     if (arg === '--fixture' && i + 1 < argv.length) { fixture = argv[++i]; continue; }
     if (arg.startsWith('--fixture=')) { fixture = arg.slice('--fixture='.length); continue; }

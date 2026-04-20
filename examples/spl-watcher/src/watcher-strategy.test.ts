@@ -129,4 +129,22 @@ describe('WatcherStrategy — onSignal', () => {
     expect(r1).toBeNull();
     expect(r2).toBeNull();
   });
+
+  it('accepts dest as plain base58 string (as produced by FixtureSignalSource)', async () => {
+    const emitted: string[] = [];
+    const strat = new WatcherStrategy(new Set([WATCHED]), (l) => emitted.push(l));
+    const sig = makeSignal({
+      decoded: {
+        source: otherPk,
+        dest: WATCHED, // plain string, not PublicKey
+        amount: 100,
+      },
+    });
+    await strat.onSignal(sig, {} as unknown as StrategyContext);
+    expect(emitted).toHaveLength(1);
+    expect(JSON.parse(emitted[0]!)).toMatchObject({
+      wallet: WATCHED,
+      amount: '100',
+    });
+  });
 });
