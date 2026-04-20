@@ -62,7 +62,10 @@ function extractTxUpdate(update: GeyserUpdate | GeyserTxUpdate): GeyserTxUpdate 
   const txInner = txEnvelope['transaction'] as Record<string, unknown> | undefined;
   const meta = txEnvelope['meta'] as Record<string, unknown> | undefined;
 
-  const sigs = (txInner?.['signatures'] ?? txInner?.['transaction']?.['signatures']) as string[] | undefined;
+  let sigs: string[] | undefined;
+  if (txInner && typeof txInner === 'object') {
+    sigs = (txInner['signatures'] ?? (txInner['transaction'] as Record<string, unknown> | undefined)?.['signatures']) as string[] | undefined;
+  }
   const signature = Array.isArray(sigs) && typeof sigs[0] === 'string' ? sigs[0] : undefined;
   if (!signature) return undefined;
 
