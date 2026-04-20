@@ -5,3 +5,4 @@ export { JitoHttpSubmitter, type JitoHttpSubmitterOpts } from './submitters/jito
 export { JitoGrpcSubmitter, type JitoGrpcSubmitterOpts } from './submitters/jito-grpc.js';
 export { BundleAccumulator, type BundleAccumulatorOpts } from './bundle-accumulator.js';
 export { InFlightMap } from './in-flight.js';
+export { confirmLanded, type ConfirmLandedOpts, type ConfirmResult } from './confirm-landed.js';
