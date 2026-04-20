@@ -115,7 +115,15 @@ export const INSTRUCTION_DISCRIMINATORS = Object.freeze({
   create: '181ec828051c0777',
   buy: '66063d1201daebea',
   sell: '33e685a4017f83ad',
-  // PumpSwap AMM program (ASSUMED — verify on live-sample capture)
+  // PumpSwap AMM program — single bidirectional Swap instruction (direction
+  // expressed via inputMint / outputMint at the account level, not a separate
+  // discriminator). Value below is ASSUMED pending the live-sample capture
+  // checkpoint — verify against a real PumpSwap swap transaction and update
+  // both here and the roundtrip fixture together if it drifts.
+  pumpSwapSwap: 'f8c69e91e17587c8',
+  // Legacy direction-specific aliases, retained for backwards compatibility
+  // in case downstream code started depending on them before the unified
+  // `pumpSwapSwap` key landed. Prefer `pumpSwapSwap` in new call sites.
   pumpswapBuy: '66063d1201daebea',
   pumpswapSell: '33e685a4017f83ad',
 } as const);

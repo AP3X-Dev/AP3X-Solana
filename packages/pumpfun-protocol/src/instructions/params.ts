@@ -15,8 +15,8 @@
  * Slippage fields express floors/ceilings for the client-side quote vs.
  * the on-chain fill:
  *   - `buy`: `maxSolCost` is the largest lamport outlay the user tolerates.
- *   - `sell`: `minSolOutput` is the smallest lamport proceed the user tolerates.
- *   - `pumpSwap swap`: `minAmountOut` is the smallest out-side amount.
+ *   - `sell`: `minSolOut` is the smallest lamport proceed the user tolerates.
+ *   - `pumpSwap swap`: `minOutputAmount` is the smallest out-side amount.
  *
  * The on-chain programs enforce these limits; the builders pass them through
  * verbatim.
@@ -50,55 +50,71 @@ export interface CreateParams {
  * Parameters for `buildBuy` — bonding-curve buy.
  *
  *   - `mint` — the pump.fun token being bought.
- *   - `buyer` — the wallet funding the buy and receiving tokens. Signer.
- *   - `amount` — token units (base-unit precision) to receive.
+ *   - `user` — the wallet funding the buy and receiving tokens. Signer.
+ *   - `solIn` — lamports the user commits to spend on this buy (pre-slippage
+ *     notional). Encoded as the first `u64` argument; the program treats it
+ *     as the exact lamport input for the bonding-curve quote.
  *   - `maxSolCost` — slippage ceiling in lamports. The program rejects the
  *     fill if the actual cost exceeds this.
+ *   - `userTokenAccount` — the caller's ATA for `mint`. The builder does not
+ *     derive it: strategies typically ensure-create the ATA upstream
+ *     (idempotent) and already have the address. Passing it through keeps
+ *     the builder pure.
  */
 export interface BuyParams {
   mint: PublicKey;
-  buyer: PublicKey;
-  amount: bigint;
+  user: PublicKey;
+  solIn: bigint;
   maxSolCost: bigint;
+  userTokenAccount: PublicKey;
 }
 
 /**
  * Parameters for `buildSell` — bonding-curve sell.
  *
  *   - `mint` — the pump.fun token being sold.
- *   - `seller` — the wallet selling tokens and receiving SOL. Signer.
- *   - `amount` — token units (base-unit precision) to sell.
- *   - `minSolOutput` — slippage floor in lamports. The program rejects the
- *     fill if proceeds fall below this.
+ *   - `user` — the wallet selling tokens and receiving SOL. Signer.
+ *   - `tokenAmount` — token units (base-unit precision) to sell. Encoded as
+ *     the first `u64` argument.
+ *   - `minSolOut` — slippage floor in lamports. The program rejects the fill
+ *     if proceeds fall below this.
+ *   - `userTokenAccount` — the caller's ATA for `mint`. Same caller-supplied
+ *     convention as {@link BuyParams}.
  */
 export interface SellParams {
   mint: PublicKey;
-  seller: PublicKey;
-  amount: bigint;
-  minSolOutput: bigint;
+  user: PublicKey;
+  tokenAmount: bigint;
+  minSolOut: bigint;
+  userTokenAccount: PublicKey;
 }
 
 /**
  * Parameters for `buildPumpSwapSwap` — post-graduation swap on the
  * PumpSwap AMM.
  *
- * Direction is expressed by `side`: `'buy'` spends the quote mint
- * (SOL / wSOL) to receive `baseMint`; `'sell'` spends `baseMint` to
- * receive the quote mint.
+ * Direction is expressed implicitly by `inputMint` vs. `outputMint`: a
+ * SOL→token buy passes wSOL as `inputMint`; a token→SOL sell reverses them.
+ * The builder is agnostic to which side is "base" and which is "quote" —
+ * callers resolve that from the pool state before calling.
  *
  *   - `pool` — the PumpSwap pool account (derived or known).
- *   - `baseMint` / `quoteMint` — the pool's mint pair.
  *   - `user` — the wallet initiating the swap. Signer.
- *   - `side` — trade direction.
- *   - `amountIn` — input amount in base-unit precision of the in-side mint.
- *   - `minAmountOut` — slippage floor on the out-side mint.
+ *   - `inputMint` / `outputMint` — the two sides of the swap. Must differ.
+ *   - `inputAmount` — input amount in base-unit precision of `inputMint`.
+ *   - `minOutputAmount` — slippage floor on `outputMint`. The program rejects
+ *     the fill if the actual out falls below this.
+ *   - `userInputAccount` / `userOutputAccount` — the caller's ATAs for
+ *     `inputMint` and `outputMint` respectively. Passed through for the same
+ *     reason as `userTokenAccount` in {@link BuyParams}.
  */
 export interface PumpSwapSwapParams {
   pool: PublicKey;
-  baseMint: PublicKey;
-  quoteMint: PublicKey;
   user: PublicKey;
-  side: 'buy' | 'sell';
-  amountIn: bigint;
-  minAmountOut: bigint;
+  inputMint: PublicKey;
+  outputMint: PublicKey;
+  inputAmount: bigint;
+  minOutputAmount: bigint;
+  userInputAccount: PublicKey;
+  userOutputAccount: PublicKey;
 }

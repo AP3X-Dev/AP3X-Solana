@@ -77,6 +77,28 @@ export function deriveGlobalPda(): { address: PublicKey; bump: number } {
 }
 
 /**
+ * Derive the pump.fun fee-recipient PDA.
+ *
+ *   seeds     = [b"fee_recipient", PUMPFUN_BONDING_CURVE_PROGRAM_ID.toBuffer()]
+ *   programId = PUMPFUN_BONDING_CURVE_PROGRAM_ID
+ *
+ * Every Buy/Sell instruction passes this account so the program can route its
+ * protocol-fee cut. Seed recipe mirrors the pump.fun PDA vectors already
+ * codified in `@ap3x/solana-tx`'s PDA regression fixture
+ * (`pumpfun-fee-recipient`), so the derivation is exercised indirectly by
+ * existing tests even before the instruction-level roundtrip lands. See the
+ * `buy.ts` / `sell.ts` file-top ASSUMPTION block: account layout is still
+ * best-effort until the Helius-keyed fixture capture confirms positions.
+ */
+export function deriveFeeRecipientPda(): { address: PublicKey; bump: number } {
+  const seeds = [
+    new TextEncoder().encode('fee_recipient'),
+    PUMPFUN_BONDING_CURVE_PROGRAM_ID.toBuffer(),
+  ];
+  return findProgramAddress(seeds, PUMPFUN_BONDING_CURVE_PROGRAM_ID);
+}
+
+/**
  * Derive the pump.fun event-authority PDA.
  *
  *   seeds     = [b"__event_authority"]
