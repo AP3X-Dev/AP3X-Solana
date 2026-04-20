@@ -34,7 +34,8 @@ ap3x-solana/
 ├─ tests/
 │   └─ fixtures/
 │       ├─ signals-spl-watcher.jsonl.gz                 # NEW (replay fixture)
-│       └─ portfolio-cold-start-wallets.json            # NEW (10 wallets for gate 8)
+│       ├─ portfolio-cold-start-wallets.json            # NEW (10 wallets selected from spl-accounts.json.gz)
+│       └─ cold-start-tx-history.jsonl.gz               # NEW (per-tx getTransaction responses for the 10 wallets' lookback window)
 └─ docs/
     └─ runtime-architecture.md                         # NEW (sequence diagrams)
 ```
@@ -331,7 +332,7 @@ type TradeIntent = {
 8. **Route** — submitter selection:
    - If `intent.submitter` is set, use that submitter kind.
    - Else: configured default (constructor `defaultSubmitter`).
-   - If `bundleGroup` set, route through bundle accumulator (see below) regardless of submitter kind — bundles only go through Jito submitters; if `defaultSubmitter` is `rpc`, throw `ConfigError` at register time.
+   - If `intent.submitter.bundleGroup` is set, route through bundle accumulator (see below). Bundles require a Jito submitter; if no `jito-http` or `jito-grpc` submitter is configured, `submit()` rejects synchronously with `ConfigError { code: 'no_jito_submitter_for_bundle' }` before queuing.
 9. **Submit** — submitter returns `SubmissionAck` (signature or bundle UUID).
 10. **Poll for landing** — `confirmLanded(signature, deadline)` polls `getSignatureStatuses` (RPC) or Jito bundle landing endpoint (gRPC/HTTP) until terminal or deadline.
 11. **Return `ExecutionResult`:**
@@ -671,7 +672,7 @@ No package logs to stdout/stderr. All structured via `metrics` events + per-stra
 | 5. Provider failover mid-execution | Integration test against fake `RpcPool` with injected primary failure | — |
 | 6. Backtest parity (same decisionLog + lifecycleLog across runs) | Integration test in `solana-strategy/tests/backtest-determinism.test.ts` | — |
 | 7. Drift detection + incremental re-reconstruction | Integration test in `solana-portfolio/tests/reconciler.test.ts` | — |
-| 8. Cost-basis reconstruction ±1 lamport accuracy on 10 mainnet wallets | Integration test against `tests/fixtures/spl-accounts.json.gz` + new `tests/fixtures/portfolio-cold-start-wallets.json` | Captures depend on B6 fixture (already shipped) |
+| 8. Cost-basis reconstruction ±1 lamport accuracy on 10 mainnet wallets | Integration test against shipped `tests/fixtures/spl-accounts.json.gz` (closed by PRP-01 commit `80eb783` / `3aa221f`) + new `tests/fixtures/portfolio-cold-start-wallets.json` (wallet selection) + new `tests/fixtures/cold-start-tx-history.jsonl.gz` (Helius-captured `getTransaction` responses for each wallet's 90d lookback window) | Tx-history capture is a Phase-A prerequisite, gated on Helius free tier — see §9 |
 | 9. Jito HTTP/gRPC submission parity (in-process gRPC fake + HTTP mock) | Integration test in `solana-executor/tests/jito-parity.test.ts` | — |
 | 10. Strategy lifecycle fidelity (all 8 hooks fire as spec'd) | Integration test in `solana-strategy/tests/lifecycle-fidelity.test.ts` | — |
 | 11. Zero ecosystem deps | CI `pnpm why @solana/web3.js` etc. (inherited) | — |
@@ -735,12 +736,22 @@ These join PRP-01's B1/B3/B4/B5 backlog.
 This spec hands off to `superpowers:writing-plans` to produce `docs/superpowers/plans/2026-04-19-prp-02-solana-runtime-plan.md`. The plan will:
 
 1. Order package implementation respecting layering:
-   - **Phase A (independent):** `solana-signals` (no inter-runtime deps), SPL transfer decoders added to `solana-spl`.
+   - **Phase A (independent):** `solana-signals` (no inter-runtime deps); SPL transfer decoders added to `solana-spl`; cold-start fixture capture (see Phase-A prereq below).
    - **Phase B (requires A):** `solana-portfolio` (depends on transfer-decoder exports + connectivity).
-   - **Phase C (requires substrate + signals):** `solana-executor` (depends on tx, vault, connectivity, signals; Jito proto vendoring is a parallel sub-task).
-   - **Phase D (requires A+B+C):** `solana-strategy` (orchestrator; depends on all three plus vault).
+   - **Phase C (requires substrate + signals):** `solana-executor` (depends on tx, vault, connectivity; Jito proto vendoring is a parallel sub-task).
+   - **Phase D (requires A+B+C):** `solana-strategy` (orchestrator; depends on signals, executor, portfolio, vault).
    - **Phase E (requires D):** `examples/spl-watcher`.
-2. Mark fixture-capture tasks (cold-start wallet selection from `tests/fixtures/spl-accounts.json.gz` for gate 8) as front-loaded in Phase A or earlier.
-3. TDD checkpoints per package (test-first, watch fail, implement, pass, commit).
-4. Tag deferred gates B8/B9/B10/B11 as backlog items, gated on Helius Business credentials.
-5. Identify parallelizable tasks within phases for subagent dispatch.
+
+2. **Phase-A prereq — gate-8 fixture capture.** Plan must include a task to:
+   - Select 10 wallets from `tests/fixtures/spl-accounts.json.gz` with non-trivial trade history (heuristic: token accounts with non-zero balances and ≥3 historical signatures within last 90d).
+   - Run a new capture script `pnpm capture:cold-start-tx-history` (companion to existing `capture:spl` / `capture:metaplex`) that, for each selected wallet, calls `getSignaturesForAddress` + paginates `getTransaction` for the 90d lookback window, gz-compresses to `tests/fixtures/cold-start-tx-history.jsonl.gz`, and commits.
+   - Helius free tier supports both calls; this is NOT credential-gated for live mainnet, only API-key-gated. The capture is a one-time setup task, not an ongoing CI dependency.
+   - The committed fixtures power gate-8 in CI; live re-capture is a B11-style backlog item only if expanded coverage is needed later.
+
+3. **TDD discipline per package** — test-first, watch fail, implement, pass, commit per task. Coverage ≥80% on packages, ≥60% on the example.
+
+4. **Tag deferred gates B8/B9/B10/B11 as backlog items**, gated on Helius Business credentials (live Geyser) and Jito mainnet block-engine access (live bundles), joining PRP-01's B1/B3/B4/B5.
+
+5. **Identify parallelizable tasks within phases** for subagent dispatch — e.g., signals' three SignalSource implementations can land in parallel once the `Signal` type and `SignalQueue` exist; executor's three `Submitter` implementations can land in parallel once the `Submitter` interface exists; portfolio's accounting helpers can land in parallel with the cold-start algorithm.
+
+6. **`runtime-architecture.md`** is itself a deliverable (per §6 of the PRP) — plan it as the final Phase-D documentation task, capturing the sequence diagrams for: cold-start flow, live signal flow, backtest flow, executor failover flow, drift+reconciliation flow. Also document the `onError` synchronous semantics so strategy authors don't `await` work inside it.
