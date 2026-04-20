@@ -126,6 +126,31 @@ importers:
         specifier: workspace:*
         version: link:../solana-tx
 
+  packages/solana-signals:
+    dependencies:
+      '@ap3x/solana-connectivity':
+        specifier: workspace:*
+        version: link:../solana-connectivity
+      '@ap3x/solana-core':
+        specifier: workspace:*
+        version: link:../solana-core
+      '@ap3x/solana-events':
+        specifier: workspace:*
+        version: link:../solana-events
+      '@noble/hashes':
+        specifier: ^1.4.0
+        version: 1.8.0
+    devDependencies:
+      tsup:
+        specifier: ^8.3.0
+        version: 8.5.1(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@20.19.39)(msw@2.13.4(@types/node@20.19.39)(typescript@5.9.3))
+
   packages/solana-spl:
     dependencies:
       '@ap3x/solana-connectivity':
@@ -712,6 +737,10 @@ packages:
 
   '@noble/ed25519@2.3.0':
     resolution: {integrity: sha512-M7dvXL2B92/M7dw9+gzuydL8qn/jiqNHaoR3Q+cb1q1GHV7uwE17WCyFMG+Y+TZb5izcaXk5TdJRrDUxHXL78A==}
+
+  '@noble/hashes@1.8.0':
+    resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
+    engines: {node: ^14.21.3 || >=16}
 
   '@noble/hashes@2.2.0':
     resolution: {integrity: sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg==}
@@ -2723,6 +2752,8 @@ snapshots:
       strict-event-emitter: 0.5.1
 
   '@noble/ed25519@2.3.0': {}
+
+  '@noble/hashes@1.8.0': {}
 
   '@noble/hashes@2.2.0': {}
 
