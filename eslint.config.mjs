@@ -125,6 +125,8 @@ export default [
                 'strategy',
                 'executor',
                 'portfolio',
+                'pumpfun-events',
+                'pumpfun-protocol',
               ],
             },
           ],
