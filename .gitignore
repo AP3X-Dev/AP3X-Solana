@@ -21,3 +21,4 @@ secrets/
 *.swo
 
 .worktrees/
+.claude/
