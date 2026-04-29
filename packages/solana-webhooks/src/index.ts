@@ -23,6 +23,9 @@ export {
   type DrainerEmitContext,
 } from './outbox/drainer.js';
 
+// Healthz.
+export { Healthz, DEFAULT_SILENT_THRESHOLD_MS, type HealthzOptions } from './healthz.js';
+
 // HTTP receiver.
 export {
   createReceiverHandler,
