@@ -1,0 +1,22 @@
+{
+  "signature": "sig_token_mint_1",
+  "timestamp": 1714000700,
+  "type": "TOKEN_MINT",
+  "transactionError": null,
+  "feePayer": "WALLET_ADDR",
+  "nativeTransfers": [
+    {
+      "fromUserAccount": "WALLET_ADDR",
+      "toUserAccount": "PUMPFUN_MINT_AUTHORITY",
+      "amount": 300000000
+    }
+  ],
+  "tokenTransfers": [
+    {
+      "fromUserAccount": "PUMPFUN_MINT_AUTHORITY",
+      "toUserAccount": "WALLET_ADDR",
+      "mint": "NewPumpfunBondingMint",
+      "tokenAmount": 1000000
+    }
+  ]
+}

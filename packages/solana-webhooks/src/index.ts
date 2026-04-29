@@ -28,3 +28,22 @@ export {
 } from './server/http.js';
 export { verifyAuthHeader } from './server/auth.js';
 export { Semaphore } from './server/backpressure.js';
+
+// Helius driver.
+export {
+  createHeliusDriver,
+  HELIUS_SOURCE,
+  type HeliusDriverOptions,
+} from './drivers/helius/receiver.js';
+export {
+  normalizeHeliusTx,
+  venueProgramId,
+  PUMPFUN_PROGRAM,
+  JUPITER_V6_PROGRAM,
+  RAYDIUM_AMM_V4_PROGRAM,
+  UNKNOWN_PROGRAM,
+  type HeliusEnhancedTx,
+  type HeliusTokenTransfer,
+  type HeliusNativeTransfer,
+  type HeliusDecodedData,
+} from './drivers/helius/normalize.js';

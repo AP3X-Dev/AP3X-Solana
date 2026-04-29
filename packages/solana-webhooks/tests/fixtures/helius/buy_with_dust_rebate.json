@@ -1,0 +1,27 @@
+{
+  "signature": "sig_dust_rebate_1",
+  "timestamp": 1714000600,
+  "type": "SWAP",
+  "transactionError": null,
+  "feePayer": "WALLET_ADDR",
+  "tokenTransfers": [
+    {
+      "fromUserAccount": "WALLET_ADDR",
+      "toUserAccount": "POOL",
+      "mint": "So11111111111111111111111111111111111111112",
+      "tokenAmount": 2.0
+    },
+    {
+      "fromUserAccount": "POOL",
+      "toUserAccount": "WALLET_ADDR",
+      "mint": "RealTargetMintXYZ",
+      "tokenAmount": 500000
+    },
+    {
+      "fromUserAccount": "ROUTER",
+      "toUserAccount": "WALLET_ADDR",
+      "mint": "DustRebateMintZZZ",
+      "tokenAmount": 0.0001
+    }
+  ]
+}

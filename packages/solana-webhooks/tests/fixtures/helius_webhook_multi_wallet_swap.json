@@ -1,0 +1,40 @@
+{
+  "signature": "fixMultiWallet000000000000000000000000000000000000000000000000",
+  "type": "SWAP",
+  "timestamp": 1745683320,
+  "slot": 280000020,
+  "fee": 5000,
+  "feePayer": "WALLET_BUYER_AAA",
+  "transactionError": null,
+  "tokenTransfers": [
+    {
+      "fromUserAccount": "WALLET_BUYER_AAA",
+      "toUserAccount": "POOL_VAULT",
+      "mint": "So11111111111111111111111111111111111111112",
+      "tokenAmount": 1.0,
+      "tokenStandard": "Fungible"
+    },
+    {
+      "fromUserAccount": "POOL_VAULT",
+      "toUserAccount": "WALLET_BUYER_AAA",
+      "mint": "FixtureTokenMint000000000000000000000000pump",
+      "tokenAmount": 100000.0,
+      "tokenStandard": "Fungible"
+    },
+    {
+      "fromUserAccount": "WALLET_BUYER_BBB",
+      "toUserAccount": "POOL_VAULT",
+      "mint": "So11111111111111111111111111111111111111112",
+      "tokenAmount": 0.5,
+      "tokenStandard": "Fungible"
+    },
+    {
+      "fromUserAccount": "POOL_VAULT",
+      "toUserAccount": "WALLET_BUYER_BBB",
+      "mint": "FixtureTokenMint000000000000000000000000pump",
+      "tokenAmount": 50000.0,
+      "tokenStandard": "Fungible"
+    }
+  ],
+  "nativeTransfers": []
+}

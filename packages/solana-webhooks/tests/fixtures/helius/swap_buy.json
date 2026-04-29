@@ -1,0 +1,21 @@
+{
+  "signature": "sig_swap_buy_1",
+  "timestamp": 1714000000,
+  "type": "SWAP",
+  "transactionError": null,
+  "feePayer": "WALLET_ADDR",
+  "tokenTransfers": [
+    {
+      "fromUserAccount": "WALLET_ADDR",
+      "toUserAccount": "POOL",
+      "mint": "So11111111111111111111111111111111111111112",
+      "tokenAmount": 1.5
+    },
+    {
+      "fromUserAccount": "POOL",
+      "toUserAccount": "WALLET_ADDR",
+      "mint": "NewTokenMintABC",
+      "tokenAmount": 1000000
+    }
+  ]
+}

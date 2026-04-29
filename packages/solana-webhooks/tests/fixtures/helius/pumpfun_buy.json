@@ -1,0 +1,22 @@
+{
+  "signature": "sig_pumpfun_1",
+  "timestamp": 1714000200,
+  "type": "SWAP",
+  "transactionError": null,
+  "feePayer": "WALLET_ADDR",
+  "nativeTransfers": [
+    {
+      "fromUserAccount": "WALLET_ADDR",
+      "toUserAccount": "PUMP_CURVE",
+      "amount": 500000000
+    }
+  ],
+  "tokenTransfers": [
+    {
+      "fromUserAccount": "PUMP_CURVE",
+      "toUserAccount": "WALLET_ADDR",
+      "mint": "PumpFunMintXYZ",
+      "tokenAmount": 750000
+    }
+  ]
+}

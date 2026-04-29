@@ -1,0 +1,132 @@
+[
+  {
+    "signature": "fixBatch1000000000000000000000000000000000000000000000000000000",
+    "type": "SWAP",
+    "timestamp": 1745683400,
+    "slot": 280000030,
+    "fee": 5000,
+    "feePayer": "WALLET_BUYER_AAA",
+    "transactionError": null,
+    "tokenTransfers": [
+      {
+        "fromUserAccount": "WALLET_BUYER_AAA",
+        "toUserAccount": "POOL_VAULT",
+        "mint": "So11111111111111111111111111111111111111112",
+        "tokenAmount": 0.5,
+        "tokenStandard": "Fungible"
+      },
+      {
+        "fromUserAccount": "POOL_VAULT",
+        "toUserAccount": "WALLET_BUYER_AAA",
+        "mint": "BatchTokenMintAAA00000000000000000000000pump",
+        "tokenAmount": 50000.0,
+        "tokenStandard": "Fungible"
+      }
+    ],
+    "nativeTransfers": []
+  },
+  {
+    "signature": "fixBatch2000000000000000000000000000000000000000000000000000000",
+    "type": "SWAP",
+    "timestamp": 1745683410,
+    "slot": 280000031,
+    "fee": 5000,
+    "feePayer": "WALLET_BUYER_BBB",
+    "transactionError": null,
+    "tokenTransfers": [
+      {
+        "fromUserAccount": "WALLET_BUYER_BBB",
+        "toUserAccount": "POOL_VAULT",
+        "mint": "So11111111111111111111111111111111111111112",
+        "tokenAmount": 1.0,
+        "tokenStandard": "Fungible"
+      },
+      {
+        "fromUserAccount": "POOL_VAULT",
+        "toUserAccount": "WALLET_BUYER_BBB",
+        "mint": "BatchTokenMintBBB00000000000000000000000pump",
+        "tokenAmount": 80000.0,
+        "tokenStandard": "Fungible"
+      }
+    ],
+    "nativeTransfers": []
+  },
+  {
+    "signature": "fixBatch3000000000000000000000000000000000000000000000000000000",
+    "type": "SWAP",
+    "timestamp": 1745683420,
+    "slot": 280000032,
+    "fee": 5000,
+    "feePayer": "WALLET_BUYER_AAA",
+    "transactionError": null,
+    "tokenTransfers": [
+      {
+        "fromUserAccount": "WALLET_BUYER_AAA",
+        "toUserAccount": "POOL_VAULT",
+        "mint": "RandomNonStableTokenMintZ000000000000000000",
+        "tokenAmount": 100.0,
+        "tokenStandard": "Fungible"
+      },
+      {
+        "fromUserAccount": "POOL_VAULT",
+        "toUserAccount": "WALLET_BUYER_AAA",
+        "mint": "AnotherNonStableTokenMintQ00000000000000000",
+        "tokenAmount": 5000.0,
+        "tokenStandard": "Fungible"
+      }
+    ],
+    "nativeTransfers": []
+  },
+  {
+    "signature": "fixBatch4000000000000000000000000000000000000000000000000000000",
+    "type": "SWAP",
+    "timestamp": 1745683430,
+    "slot": 280000033,
+    "fee": 5000,
+    "feePayer": "WALLET_BUYER_AAA",
+    "transactionError": null,
+    "tokenTransfers": [
+      {
+        "fromUserAccount": "WALLET_BUYER_AAA",
+        "toUserAccount": "POOL_VAULT",
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "tokenAmount": 100.0,
+        "tokenStandard": "Fungible"
+      },
+      {
+        "fromUserAccount": "POOL_VAULT",
+        "toUserAccount": "WALLET_BUYER_AAA",
+        "mint": "BatchTokenMintCCC00000000000000000000000pump",
+        "tokenAmount": 25000.0,
+        "tokenStandard": "Fungible"
+      }
+    ],
+    "nativeTransfers": []
+  },
+  {
+    "signature": "fixBatch5000000000000000000000000000000000000000000000000000000",
+    "type": "SWAP",
+    "timestamp": 1745683440,
+    "slot": 280000034,
+    "fee": 5000,
+    "feePayer": "WALLET_BUYER_BBB",
+    "transactionError": null,
+    "tokenTransfers": [
+      {
+        "fromUserAccount": "WALLET_BUYER_BBB",
+        "toUserAccount": "POOL_VAULT",
+        "mint": "So11111111111111111111111111111111111111112",
+        "tokenAmount": 2.0,
+        "tokenStandard": "Fungible"
+      },
+      {
+        "fromUserAccount": "POOL_VAULT",
+        "toUserAccount": "WALLET_BUYER_BBB",
+        "mint": "BatchTokenMintDDD00000000000000000000000pump",
+        "tokenAmount": 200000.0,
+        "tokenStandard": "Fungible"
+      }
+    ],
+    "nativeTransfers": []
+  }
+]

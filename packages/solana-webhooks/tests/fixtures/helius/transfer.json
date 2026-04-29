@@ -1,0 +1,15 @@
+{
+  "signature": "sig_transfer_1",
+  "timestamp": 1714000400,
+  "type": "TRANSFER",
+  "transactionError": null,
+  "feePayer": "WALLET_ADDR",
+  "tokenTransfers": [
+    {
+      "fromUserAccount": "OTHER_WALLET",
+      "toUserAccount": "WALLET_ADDR",
+      "mint": "SomeMint",
+      "tokenAmount": 100
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "signature": "fixSwapNonBuy0000000000000000000000000000000000000000000000000",
+  "type": "SWAP",
+  "timestamp": 1745683260,
+  "slot": 280000010,
+  "fee": 5000,
+  "feePayer": "WALLET_BUYER_AAA",
+  "transactionError": null,
+  "tokenTransfers": [
+    {
+      "fromUserAccount": "WALLET_BUYER_AAA",
+      "toUserAccount": "POOL_VAULT",
+      "mint": "RandomNonStableTokenMintZ000000000000000000",
+      "tokenAmount": 100.0,
+      "tokenStandard": "Fungible"
+    },
+    {
+      "fromUserAccount": "POOL_VAULT",
+      "toUserAccount": "WALLET_BUYER_AAA",
+      "mint": "AnotherNonStableTokenMintQ00000000000000000",
+      "tokenAmount": 5000.0,
+      "tokenStandard": "Fungible"
+    }
+  ],
+  "nativeTransfers": []
+}

@@ -1,0 +1,27 @@
+{
+  "signature": "sig_jupiter_1",
+  "timestamp": 1714000100,
+  "type": "SWAP",
+  "transactionError": null,
+  "feePayer": "WALLET_ADDR",
+  "tokenTransfers": [
+    {
+      "fromUserAccount": "WALLET_ADDR",
+      "toUserAccount": "JUPITER_VAULT",
+      "mint": "So11111111111111111111111111111111111111112",
+      "tokenAmount": 0.25
+    },
+    {
+      "fromUserAccount": "JUPITER_VAULT",
+      "toUserAccount": "INTERMEDIARY",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "tokenAmount": 50.0
+    },
+    {
+      "fromUserAccount": "INTERMEDIARY",
+      "toUserAccount": "WALLET_ADDR",
+      "mint": "TargetMintXYZ",
+      "tokenAmount": 42000.5
+    }
+  ]
+}

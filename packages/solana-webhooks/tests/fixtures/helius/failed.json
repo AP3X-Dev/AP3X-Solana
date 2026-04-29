@@ -1,0 +1,21 @@
+{
+  "signature": "sig_failed_1",
+  "timestamp": 1714000500,
+  "type": "SWAP",
+  "transactionError": {"InstructionError": [0, "Custom"]},
+  "feePayer": "WALLET_ADDR",
+  "tokenTransfers": [
+    {
+      "fromUserAccount": "WALLET_ADDR",
+      "toUserAccount": "POOL",
+      "mint": "So11111111111111111111111111111111111111112",
+      "tokenAmount": 1.0
+    },
+    {
+      "fromUserAccount": "POOL",
+      "toUserAccount": "WALLET_ADDR",
+      "mint": "WouldBeMint",
+      "tokenAmount": 9999
+    }
+  ]
+}
