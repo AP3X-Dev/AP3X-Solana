@@ -1,0 +1,45 @@
+{
+  "name": "@ap3x/solana-webhooks",
+  "version": "0.0.0",
+  "private": false,
+  "description": "Webhook ingestion as a peer transport to Geyser for the AP3X Solana substrate. Receiver, outbox-first persistence, HMAC verify, backpressure, gap catchup. Helius is the first driver.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ap3x/solana-core": "workspace:*",
+    "@ap3x/solana-events": "workspace:*",
+    "@ap3x/solana-signals": "workspace:*",
+    "@ap3x/solana-connectivity": "workspace:*"
+  },
+  "peerDependencies": {
+    "better-sqlite3": ">=9.0.0",
+    "pg": ">=8.11.0"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": { "optional": true },
+    "pg": { "optional": true }
+  },
+  "devDependencies": {
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
