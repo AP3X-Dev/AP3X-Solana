@@ -116,11 +116,15 @@ export function createReceiverHandler(opts: ReceiverOptions): ReceiverHandler {
       let inserted = 0;
       let duplicates = 0;
       for (const event of parsed) {
+        // Persist the per-tx payload, not the wire body. The drainer reads
+        // exactly one tx's data per row, so storing only that slice keeps
+        // outbox rows compact and the drainer's parse step trivial.
+        const perTxBody = new TextEncoder().encode(JSON.stringify(event.payload));
         const wasNew = await outbox.insert({
           id: event.id,
           source: driver.source,
           receivedAt,
-          rawPayload: req.body,
+          rawPayload: perTxBody,
         });
         if (wasNew) inserted += 1;
         else duplicates += 1;

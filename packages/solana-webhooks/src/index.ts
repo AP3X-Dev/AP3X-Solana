@@ -16,6 +16,12 @@ export { noopMetrics } from './types.js';
 // Outbox.
 export type { Outbox, OutboxRow, PendingOptions } from './outbox/store.js';
 export { SqliteOutbox, type SqliteOutboxConfig, type SqlitePragmas } from './outbox/sqlite.js';
+export {
+  Drainer,
+  type DrainerOptions,
+  type DrainerEmit,
+  type DrainerEmitContext,
+} from './outbox/drainer.js';
 
 // HTTP receiver.
 export {
