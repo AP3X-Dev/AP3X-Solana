@@ -46,6 +46,16 @@ export {
   type HeliusDriverOptions,
 } from './drivers/helius/receiver.js';
 export {
+  HeliusCatchup,
+  DEFAULT_HELIUS_BASE_URL,
+  type HeliusCatchupOptions,
+} from './drivers/helius/catchup.js';
+export {
+  HeliusAdmin,
+  DEFAULT_HELIUS_ADMIN_BASE_URL,
+  type HeliusAdminOptions,
+} from './drivers/helius/admin.js';
+export {
   normalizeHeliusTx,
   venueProgramId,
   PUMPFUN_PROGRAM,

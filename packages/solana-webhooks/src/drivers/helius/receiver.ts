@@ -7,6 +7,8 @@ import type {
 } from '../../types.js';
 import { verifyAuthHeader } from '../../server/auth.js';
 import { normalizeHeliusTx, type HeliusEnhancedTx } from './normalize.js';
+import { HeliusCatchup, type HeliusCatchupOptions } from './catchup.js';
+import { HeliusAdmin, type HeliusAdminOptions } from './admin.js';
 
 /** Stable identifier for this driver. Used as the `source` column in the outbox. */
 export const HELIUS_SOURCE = 'helius' as const;
@@ -18,6 +20,18 @@ export interface HeliusDriverOptions {
    * `verifyAuthHeader` doc-comment for why this isn't HMAC-of-body.
    */
   secret: string;
+  /**
+   * Optional catchup configuration. When provided, the driver exposes a
+   * `catchup` client backed by Helius's enhanced-tx REST API for gap replay.
+   * Apps that don't need catchup omit this and the field stays unset.
+   */
+  catchup?: HeliusCatchupOptions;
+  /**
+   * Optional admin configuration. When provided, the driver exposes an
+   * `admin` client for Helius's webhook-management API
+   * (subscribe / remove / reconcile addresses).
+   */
+  admin?: HeliusAdminOptions;
 }
 
 /**
@@ -33,7 +47,7 @@ export interface HeliusDriverOptions {
  * driver's normalize layer directly.
  */
 export function createHeliusDriver(opts: HeliusDriverOptions): WebhookDriver {
-  return {
+  const driver: WebhookDriver = {
     source: HELIUS_SOURCE,
 
     verifyRequest(req: IncomingRequest): VerifyResult {
@@ -79,4 +93,13 @@ export function createHeliusDriver(opts: HeliusDriverOptions): WebhookDriver {
       return normalizeHeliusTx(raw.payload as HeliusEnhancedTx);
     },
   };
+
+  if (opts.catchup) {
+    driver.catchup = new HeliusCatchup(opts.catchup);
+  }
+  if (opts.admin) {
+    driver.admin = new HeliusAdmin(opts.admin);
+  }
+
+  return driver;
 }
