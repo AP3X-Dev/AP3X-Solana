@@ -20,7 +20,8 @@
     "@ap3x/solana-spl": "workspace:*",
     "@ap3x/solana-metaplex": "workspace:*",
     "@ap3x/solana-events": "workspace:*",
-    "@ap3x/solana-vault": "workspace:*"
+    "@ap3x/solana-vault": "workspace:*",
+    "@ap3x/solana-webhooks": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

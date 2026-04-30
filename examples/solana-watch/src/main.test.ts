@@ -14,6 +14,8 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { dirname, join, resolve as pathResolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { describe, it, expect, beforeEach } from 'vitest';
 
@@ -441,6 +443,7 @@ describe('run', () => {
     const { io } = mkIo();
     const { factory, last } = mkFakeFactory();
     const args: Args = {
+      mode: 'geyser',
       programs: [TOKEN_ID],
       rpc: [],
       geyser: 'grpc://h:443',
@@ -460,6 +463,7 @@ describe('run', () => {
     const { io } = mkIo();
     const { factory, last } = mkFakeFactory();
     const args: Args = {
+      mode: 'geyser',
       programs: [TOKEN_ID, METAPLEX_ID],
       rpc: [],
       geyser: 'grpc://h:443',
@@ -482,6 +486,7 @@ describe('run', () => {
     const { io, stdout } = mkIo();
     const { factory, last } = mkFakeFactory();
     const args: Args = {
+      mode: 'geyser',
       programs: [TOKEN_ID],
       rpc: [],
       geyser: 'grpc://h:443',
@@ -520,6 +525,7 @@ describe('run', () => {
     const { io, stderr } = mkIo();
     const { factory } = mkFakeFactory();
     const args: Args = {
+      mode: 'geyser',
       programs: [TOKEN_ID],
       rpc: ['https://rpc.example'],
       geyser: 'grpc://h:443',
@@ -534,6 +540,7 @@ describe('run', () => {
     const { io, stderr } = mkIo();
     const { factory, last } = mkFakeFactory();
     const args: Args = {
+      mode: 'geyser',
       programs: [TOKEN_ID],
       rpc: [],
       geyser: 'grpc://h:443',
@@ -549,6 +556,7 @@ describe('run', () => {
     const { io, stderr } = mkIo();
     const { factory, last } = mkFakeFactory();
     const args: Args = {
+      mode: 'geyser',
       programs: [TOKEN_ID],
       rpc: [],
       geyser: 'grpc://h:443',
@@ -564,6 +572,7 @@ describe('run', () => {
     const { io, stderr } = mkIo();
     const { factory, last } = mkFakeFactory();
     const args: Args = {
+      mode: 'geyser',
       programs: [TOKEN_ID],
       rpc: [],
       geyser: 'grpc://h:443',
@@ -579,6 +588,7 @@ describe('run', () => {
     const { io, stderr } = mkIo();
     const { factory, last } = mkFakeFactory();
     const args: Args = {
+      mode: 'geyser',
       programs: [TOKEN_ID],
       rpc: [],
       geyser: 'grpc://h:443',
@@ -606,6 +616,7 @@ describe('run', () => {
     const { io } = mkIo();
     const { factory, last } = mkFakeFactory();
     const args: Args = {
+      mode: 'geyser',
       programs: [TOKEN_ID],
       rpc: [],
       geyser: 'grpc://h:443',
@@ -614,5 +625,110 @@ describe('run', () => {
     const close = await run(args, io, { geyserFactory: factory });
     await close();
     expect(last().currentSubscription!.closedCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Webhook mode
+// ---------------------------------------------------------------------------
+
+describe('parseArgs — webhook mode', () => {
+  it('--webhook sets mode and skips the geyser/program requirements', () => {
+    const args = parseArgs(['--webhook', './tests/fixtures/helius/swap_buy.json']);
+    expect(args.mode).toBe('webhook');
+    expect(args.webhook).toBe('./tests/fixtures/helius/swap_buy.json');
+    expect(args.programs).toEqual([]);
+    expect(args.geyser).toBeUndefined();
+  });
+
+  it('rejects --webhook combined with --geyser', () => {
+    expect(() =>
+      parseArgs(['--webhook', 'f.json', '--geyser', 'grpc://h:443']),
+    ).toThrow(/cannot be combined/);
+  });
+
+  it('rejects --webhook combined with --program', () => {
+    expect(() =>
+      parseArgs(['--webhook', 'f.json', '--program', TOKEN_ID]),
+    ).toThrow(/cannot be combined/);
+  });
+});
+
+describe('runWebhook', () => {
+  // The example imports normalizeHeliusTx from @ap3x/solana-webhooks; the
+  // captured fixtures live under packages/solana-webhooks/tests/fixtures/.
+  // Resolve from this file's directory so the test is cwd-independent and
+  // works on both POSIX and Windows (fileURLToPath strips the leading slash
+  // that Windows file URLs carry before the drive letter).
+  const HERE = dirname(fileURLToPath(import.meta.url));
+  const PKG_FIXTURES = pathResolve(HERE, '..', '..', '..', 'packages', 'solana-webhooks', 'tests', 'fixtures');
+  const FIXTURES = join(PKG_FIXTURES, 'helius');
+
+  it('emits a helius-swap line for a single-tx SWAP fixture', async () => {
+    const { io, stdout: lines, stderr: errLines } = mkIo();
+    const { runWebhook } = await import('./main');
+    const close = runWebhook(
+      {
+        mode: 'webhook',
+        programs: [],
+        rpc: [],
+        decoders: [],
+        webhook: `${FIXTURES}/swap_buy.json`,
+      },
+      io,
+      { now: () => 0 },
+    );
+    await close();
+    expect(errLines).toEqual([]);
+    expect(lines).toHaveLength(1);
+    const parsed = JSON.parse(lines[0]!) as WatchLine;
+    expect(parsed.kind).toBe('helius-swap');
+    expect(parsed.programId).toBe('11111111111111111111111111111111'); // UNKNOWN — source field absent
+    expect(parsed.latencyMs).toBe(0);
+  });
+
+  it('emits one line per tx for an array-shape fixture', async () => {
+    const { io, stdout: lines, stderr: errLines } = mkIo();
+    const { runWebhook } = await import('./main');
+    const close = runWebhook(
+      {
+        mode: 'webhook',
+        programs: [],
+        rpc: [],
+        decoders: [],
+        // helius_webhook_batch.json is the live wire shape (array of tx).
+        webhook: join(PKG_FIXTURES, 'helius_webhook_batch.json'),
+      },
+      io,
+      { now: () => 0 },
+    );
+    await close();
+    expect(errLines).toEqual([]);
+    // The batch fixture carries 2+ enhanced txs.
+    expect(lines.length).toBeGreaterThanOrEqual(1);
+    for (const raw of lines) {
+      const parsed = JSON.parse(raw) as WatchLine;
+      expect(typeof parsed.kind).toBe('string');
+      expect(typeof parsed.programId).toBe('string');
+    }
+  });
+
+  it('reports a missing fixture via stderr without throwing', async () => {
+    const { io, stdout: lines, stderr: errLines } = mkIo();
+    const { runWebhook } = await import('./main');
+    const close = runWebhook(
+      {
+        mode: 'webhook',
+        programs: [],
+        rpc: [],
+        decoders: [],
+        webhook: '/path/that/does/not/exist.json',
+      },
+      io,
+    );
+    await close();
+    expect(lines).toEqual([]);
+    expect(errLines).toHaveLength(1);
+    expect(errLines[0]).toMatch(/cannot read --webhook fixture/);
   });
 });

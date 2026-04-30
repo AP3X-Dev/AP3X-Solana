@@ -122,6 +122,9 @@ importers:
       '@ap3x/solana-vault':
         specifier: workspace:*
         version: link:../../packages/solana-vault
+      '@ap3x/solana-webhooks':
+        specifier: workspace:*
+        version: link:../../packages/solana-webhooks
     devDependencies:
       tsup:
         specifier: ^8.3.0

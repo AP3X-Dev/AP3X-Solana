@@ -27,6 +27,8 @@
  * entry point and is skipped under Vitest.
  */
 
+import { readFileSync } from 'node:fs';
+
 import { GeyserClient } from '@ap3x/solana-connectivity';
 import type {
   GeyserClientOptions,
@@ -40,6 +42,10 @@ import {
   type DecodedEvent,
   type EventUnion,
 } from '@ap3x/solana-events';
+import {
+  normalizeHeliusTx,
+  type HeliusEnhancedTx,
+} from '@ap3x/solana-webhooks';
 
 import {
   splTokenDecoder,
@@ -53,12 +59,17 @@ import { metaplexDecoder } from './decoders/metaplex';
 // ---------------------------------------------------------------------------
 
 export interface Args {
-  /** Base58 program IDs to subscribe to. At least one is required. */
+  /**
+   * Operating mode. `geyser` is the live-stream Yellowstone path; `webhook`
+   * is a one-shot replay of a captured Helius enhanced-tx fixture file.
+   */
+  mode: 'geyser' | 'webhook';
+  /** Base58 program IDs to subscribe to. Required in `geyser` mode. */
   programs: string[];
   /** Optional RPC endpoint URLs (may be provided more than once). */
   rpc: string[];
-  /** Geyser gRPC endpoint. Required. */
-  geyser: string;
+  /** Geyser gRPC endpoint. Required in `geyser` mode. */
+  geyser?: string;
   /** Optional bearer token; sent as the `x-token` metadata value. */
   geyserToken?: string;
   /**
@@ -71,6 +82,14 @@ export interface Args {
    * fakes in tests and Docker-side helpers.
    */
   insecure?: boolean;
+  /**
+   * Path to a captured Helius enhanced-tx fixture. Sets `mode: 'webhook'`.
+   * The file may contain a single tx object or an array of them — both
+   * shapes are produced by the Helius webhook in the wild (single is what
+   * captured tests record, array is what the live receiver hands the
+   * driver).
+   */
+  webhook?: string;
 }
 
 /**
@@ -123,6 +142,7 @@ export function parseArgs(argv: string[]): Args {
   let geyser: string | undefined;
   let geyserToken: string | undefined;
   let insecure = false;
+  let webhook: string | undefined;
 
   const takeValue = (flag: string, inline: string | undefined, i: number): [string, number] => {
     if (inline !== undefined) return [inline, i];
@@ -182,28 +202,49 @@ export function parseArgs(argv: string[]): Args {
       case '--insecure':
         insecure = true;
         break;
+      case '--webhook': {
+        const [v, j] = takeValue(flag, inline, i);
+        webhook = v;
+        i = j;
+        break;
+      }
       default:
         throw new Error(`unknown flag: ${flag}`);
     }
   }
 
-  if (programs.length === 0) {
-    throw new Error('at least one --program is required');
+  // --webhook is mutually exclusive with the live Geyser flags. The two
+  // modes carry different mandatory inputs and asserting up-front prevents
+  // a surprising precedence rule from biting an integrator.
+  if (webhook !== undefined && (geyser !== undefined || programs.length > 0)) {
+    throw new Error('--webhook cannot be combined with --geyser or --program');
   }
-  if (!geyser) {
-    throw new Error('--geyser URL is required');
+
+  if (webhook === undefined) {
+    if (programs.length === 0) {
+      throw new Error('at least one --program is required (or supply --webhook <fixture.json>)');
+    }
+    if (!geyser) {
+      throw new Error('--geyser URL is required (or supply --webhook <fixture.json>)');
+    }
   }
+
   // Default to all decoders when the user didn't specify any — the example's
-  // headline use case is "watch everything the substrate can name."
+  // headline use case is "watch everything the substrate can name." Decoders
+  // are unused in webhook mode (the Helius driver is its own decoder), but
+  // we still resolve a default so the Args shape is uniform.
   const resolvedDecoders = decoders.length > 0 ? decoders : ['spl', 'spl-2022', 'metaplex'];
+  const mode: Args['mode'] = webhook !== undefined ? 'webhook' : 'geyser';
   const args: Args = {
+    mode,
     programs,
     rpc,
-    geyser,
     decoders: resolvedDecoders,
     insecure,
   };
+  if (geyser !== undefined) args.geyser = geyser;
   if (geyserToken !== undefined) args.geyserToken = geyserToken;
+  if (webhook !== undefined) args.webhook = webhook;
   return args;
 }
 
@@ -332,6 +373,76 @@ function formatLine(ev: EventUnion, slot: number, latencyMs: number): WatchLine 
 }
 
 // ---------------------------------------------------------------------------
+// Webhook mode — one-shot fixture replay
+// ---------------------------------------------------------------------------
+
+/**
+ * Read a captured Helius enhanced-tx fixture from disk and emit one
+ * `WatchLine` per normalised event. Accepts either the single-tx shape (what
+ * the test fixtures store) or the array-of-tx wire shape (what Helius posts
+ * to a live receiver). Throws if the file is unreadable or not JSON; the
+ * caller (`runWebhook`) catches and surfaces via `io.stderr`.
+ */
+export function readWebhookFixture(path: string): HeliusEnhancedTx[] {
+  const text = readFileSync(path, 'utf8');
+  const parsed: unknown = JSON.parse(text);
+  if (Array.isArray(parsed)) return parsed as HeliusEnhancedTx[];
+  return [parsed as HeliusEnhancedTx];
+}
+
+/**
+ * Project a single normalised webhook event into the same `WatchLine` shape
+ * Geyser-mode emits, so a downstream consumer sees one stream regardless of
+ * which transport produced it. The `kind` field carries:
+ *   - the `variant` field for `decoded` events (`helius-swap`, ...)
+ *   - the literal string `'unknown'` for `UnknownEventDecode`
+ */
+function formatWebhookLine(
+  ev: ReturnType<typeof normalizeHeliusTx>[number],
+  latencyMs: number,
+): WatchLine {
+  if (ev.kind === 'unknown') {
+    return { slot: ev.slot, programId: ev.programId, kind: 'unknown', latencyMs };
+  }
+  // Decoded — the data payload is the HeliusDecodedData with `variant`.
+  const data = ev.data as { variant?: unknown };
+  const kind = typeof data?.variant === 'string' ? data.variant : 'decoded';
+  return { slot: ev.slot, programId: ev.programId, kind, latencyMs };
+}
+
+/**
+ * Run the one-shot webhook replay. Reads the fixture file referenced by
+ * `args.webhook`, normalises every contained tx through the Helius driver's
+ * `normalizeHeliusTx`, and prints one JSON line per emitted event. Returns a
+ * cleanup function for symmetry with `run()`; it's a no-op since the
+ * pipeline finishes synchronously here.
+ */
+export function runWebhook(args: Args, io: Io, deps: RunDeps = {}): () => Promise<void> {
+  if (!args.webhook) {
+    // Defensive — main() routes here only when webhook is set.
+    throw new Error('runWebhook called without --webhook path');
+  }
+  const now = deps.now ?? Date.now;
+  let txs: HeliusEnhancedTx[];
+  try {
+    txs = readWebhookFixture(args.webhook);
+  } catch (err) {
+    io.stderr(`solana-watch: cannot read --webhook fixture ${args.webhook}: ${(err as Error).message}`);
+    return () => Promise.resolve();
+  }
+
+  for (const tx of txs) {
+    const startedAt = now();
+    const events = normalizeHeliusTx(tx);
+    for (const ev of events) {
+      io.stdout(JSON.stringify(formatWebhookLine(ev, now() - startedAt)));
+    }
+  }
+
+  return () => Promise.resolve();
+}
+
+// ---------------------------------------------------------------------------
 // run() — the testable orchestration core
 // ---------------------------------------------------------------------------
 
@@ -348,6 +459,12 @@ function formatLine(ev: EventUnion, slot: number, latencyMs: number): WatchLine 
  * log parsing works for them too (the decoder marks the chunk `success: false`).
  */
 export async function run(args: Args, io: Io, deps: RunDeps = {}): Promise<() => Promise<void>> {
+  if (!args.geyser) {
+    // Defensive — parseArgs and main() route the webhook mode away from
+    // run(). Reaching here without a geyser URL is a programmer error.
+    throw new Error('run() requires args.geyser; call runWebhook() for --webhook mode');
+  }
+  const geyserUrl = args.geyser;
   const now = deps.now ?? Date.now;
   const registry = buildRegistry(args.decoders);
 
@@ -368,7 +485,7 @@ export async function run(args: Args, io: Io, deps: RunDeps = {}): Promise<() =>
 
   const geyserOpts: GeyserClientOptions = {
     endpoint: {
-      url: args.geyser,
+      url: geyserUrl,
       ...(args.geyserToken !== undefined ? { token: args.geyserToken } : {}),
       ...(args.insecure ? { insecure: true } : {}),
     },
@@ -442,10 +559,20 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const close = await run(args, {
+  const io: Io = {
     stdout: (line) => process.stdout.write(line + '\n'),
     stderr: (line) => process.stderr.write(line + '\n'),
-  });
+  };
+
+  if (args.mode === 'webhook') {
+    // One-shot — runWebhook returns synchronously after emitting. Don't
+    // install signal handlers; the process exits naturally once stdout
+    // drains.
+    runWebhook(args, io);
+    return;
+  }
+
+  const close = await run(args, io);
 
   const shutdown = (): void => {
     void close().then(() => process.exit(0));
