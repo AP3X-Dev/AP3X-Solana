@@ -6,6 +6,10 @@
 **Estimate:** 4 weeks solo
 **Master spec:** [00-master-platform-prp.md §6.4, §8](./00-master-platform-prp.md)
 
+## Status
+
+A **v0 sqlite-backed signal API** shipped under `@ap3x/pumpfun-signals` 0.1.x as an interim slice ahead of the full Phase-2 build. It exposes the `PumpfunSignals` interface (`getToken`/`getHolders`/`getTrades`/`getCandles`/`newMintStream`) backed by a `SqlitePumpfunSignals` reference implementation with strict `asOf` enforcement (validated by a 10k-query fuzz). This is not the final event-sourced layer described below — it deliberately uses sqlite over the eventual Parquet + DuckDB stack so that downstream strategy work can be unblocked while the larger ingestion pipeline lands. The API surface is forward-compatible: when the Parquet/DuckDB backend ships, it implements the same `PumpfunSignals` interface and consumers swap implementations without code changes.
+
 ## Goal
 
 Build the **signal layer** — the intelligence that distinguishes the platform from "anyone can call RPC." Event-sourced storage (Parquet + DuckDB), base signals (token, holders, trades, candles, new-mint streams), derived signals that are the strategic moat (dev reputation, smart money flow, wallet tagging, bundle detection, graduation ETA), and the **backtest harness** with virtual-clock replay and realistic fill modeling.
