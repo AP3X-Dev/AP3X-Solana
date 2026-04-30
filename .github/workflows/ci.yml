@@ -118,3 +118,50 @@ jobs:
         run: pnpm --filter @ap3x/pumpfun-events run diag
         env:
           HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
+
+  # Runs the @ap3x/solana-webhooks Postgres outbox parity tests against a
+  # service container, once per supported Postgres major. The same parity
+  # suite runs against SQLite in the default `test` job — both backends
+  # share the contract documented on the Outbox interface.
+  webhooks-postgres-tests:
+    name: webhooks-postgres-tests (PG ${{ matrix.pg-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pg-version: [14, 15, 16]
+    services:
+      postgres:
+        image: postgres:${{ matrix.pg-version }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ap3x_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AP3X_PG_URL: postgres://postgres:postgres@localhost:5432/ap3x_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Postgres outbox parity (real DB)
+        run: pnpm --filter @ap3x/solana-webhooks exec vitest run src/outbox/postgres-parity.test.ts --reporter=verbose
