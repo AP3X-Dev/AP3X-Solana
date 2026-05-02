@@ -1,6 +1,6 @@
 {
   "name": "@ap3x/solana-trading",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./backtester": {
+      "types": "./dist/backtester/index.d.ts",
+      "import": "./dist/backtester/index.js",
+      "require": "./dist/backtester/index.cjs"
     }
   },
   "files": ["dist", "README.md"],
