@@ -5,7 +5,8 @@
  * fitness score that balances risk-adjusted return with signal participation.
  */
 
-import type { BacktestMetrics, BacktestTrade } from './types.js';
+import { replayPortfolio } from './portfolio.js';
+import type { BacktestMetrics, BacktestTrade, PortfolioReplayConfig } from './types.js';
 
 /**
  * Computes aggregate metrics for a set of backtest trades.
@@ -18,6 +19,7 @@ export function computeMetrics(
   trades: readonly BacktestTrade[],
   totalSignals: number,
   minTrades = 20,
+  portfolioConfig?: PortfolioReplayConfig,
 ): BacktestMetrics {
   if (trades.length < minTrades) {
     return {
@@ -50,7 +52,35 @@ export function computeMetrics(
   // Mean ROI
   const meanRoi = rois.reduce((a, b) => a + b, 0) / rois.length;
 
-  // Max drawdown on sequential equity curve
+  const portfolio = portfolioConfig !== undefined
+    ? replayPortfolio(trades, portfolioConfig)
+    : undefined;
+  const maxDd = portfolio?.maxDrawdown ?? computeCompoundedRoiDrawdown(rois);
+
+  // Fitness: Sharpe * sqrt(participation)
+  // Rewards both risk-adjusted returns and taking enough trades
+  const participation = Math.sqrt(trades.length / totalSignals);
+  const drawdownPenalty = portfolioConfig !== undefined ? Math.max(0, 1 - maxDd) ** 2 : 1;
+  const medianPenalty = portfolioConfig !== undefined && medianRoi < 1 ? Math.max(0, medianRoi) : 1;
+  const fitness = sharpe * participation * drawdownPenalty * medianPenalty;
+
+  return {
+    tradeCount: trades.length,
+    winRate,
+    meanRoi,
+    medianRoi,
+    sharpeRatio: sharpe,
+    maxDrawdown: maxDd,
+    ...(portfolio !== undefined ? {
+      portfolioFinal: portfolio.finalEquity,
+      portfolioReturn: portfolio.returnPct,
+      tradesSkipped: portfolio.tradesSkipped,
+    } : {}),
+    fitness,
+  };
+}
+
+function computeCompoundedRoiDrawdown(rois: readonly number[]): number {
   let equity = 1;
   let peak = 1;
   let maxDd = 0;
@@ -60,11 +90,5 @@ export function computeMetrics(
     const dd = (peak - equity) / peak;
     maxDd = Math.max(maxDd, dd);
   }
-
-  // Fitness: Sharpe * sqrt(participation)
-  // Rewards both risk-adjusted returns and taking enough trades
-  const participation = Math.sqrt(trades.length / totalSignals);
-  const fitness = sharpe * participation;
-
-  return { tradeCount: trades.length, winRate, meanRoi, medianRoi, sharpeRatio: sharpe, maxDrawdown: maxDd, fitness };
+  return maxDd;
 }

@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { binarySearchFirstGte, walkForwardExit } from './walk-forward.js';
 import { computeMetrics } from './metrics.js';
-import { runMonteCarlo } from './monte-carlo.js';
+import { replayPortfolio } from './portfolio.js';
+import { runHistoricalMonteCarlo, runMonteCarlo } from './monte-carlo.js';
 import type { ExitRules, PricePoint } from './types.js';
 
 const rules: ExitRules = {
@@ -101,6 +102,30 @@ describe('computeMetrics', () => {
     // Equity: 1 * 2.0 = 2.0 (peak), then 2.0 * 0.5 = 1.0, DD = (2-1)/2 = 50%
     expect(m.maxDrawdown).toBe(0.5);
   });
+
+  it('computes fixed-size portfolio drawdown when sizing is provided', () => {
+    const trades = [
+      { entryPrice: 1, exitPrice: 0.43, roi: 0.43, holdMinutes: 10, exitReason: 'hard_stop' as const, entryTimeMs: 0, exitTimeMs: 10 },
+      { entryPrice: 1, exitPrice: 0.43, roi: 0.43, holdMinutes: 10, exitReason: 'hard_stop' as const, entryTimeMs: 0, exitTimeMs: 10 },
+      { entryPrice: 1, exitPrice: 0.43, roi: 0.43, holdMinutes: 10, exitReason: 'hard_stop' as const, entryTimeMs: 0, exitTimeMs: 10 },
+    ];
+    const m = computeMetrics(trades, 10, 2, { startCapital: 1500, tradeSize: 100, maxConcurrent: 3 });
+    expect(m.maxDrawdown).toBeCloseTo(171 / 1500);
+    expect(m.portfolioFinal).toBeCloseTo(1329);
+  });
+});
+
+describe('replayPortfolio', () => {
+  it('does not treat fixed-size trades as all-in compounding', () => {
+    const trades = [
+      { entryPrice: 1, exitPrice: 0.43, roi: 0.43, holdMinutes: 10, exitReason: 'hard_stop' as const, entryTimeMs: 0, exitTimeMs: 10 },
+      { entryPrice: 1, exitPrice: 0.43, roi: 0.43, holdMinutes: 10, exitReason: 'hard_stop' as const, entryTimeMs: 0, exitTimeMs: 10 },
+      { entryPrice: 1, exitPrice: 0.43, roi: 0.43, holdMinutes: 10, exitReason: 'hard_stop' as const, entryTimeMs: 0, exitTimeMs: 10 },
+    ];
+    const result = replayPortfolio(trades, { startCapital: 1500, tradeSize: 100, maxConcurrent: 3 });
+    expect(result.finalEquity).toBeCloseTo(1329);
+    expect(result.maxDrawdown).toBeCloseTo(0.114);
+  });
 });
 
 describe('runMonteCarlo', () => {
@@ -132,5 +157,19 @@ describe('runMonteCarlo', () => {
     const r1 = runMonteCarlo(pool, hold, 5, cfg);
     const r2 = runMonteCarlo(pool, hold, 5, cfg);
     expect(r1.medianFinal).toBe(r2.medianFinal);
+  });
+
+  it('historical bootstrap preserves clustered same-day losses', () => {
+    const dayMs = 86_400_000;
+    const trades = [
+      { entryPrice: 1, exitPrice: 0.5, roi: 0.5, holdMinutes: 30, exitReason: 'hard_stop' as const, entryTimeMs: 0, exitTimeMs: 30 * 60_000 },
+      { entryPrice: 1, exitPrice: 0.5, roi: 0.5, holdMinutes: 30, exitReason: 'hard_stop' as const, entryTimeMs: 5 * 60_000, exitTimeMs: 35 * 60_000 },
+      { entryPrice: 1, exitPrice: 2.0, roi: 2.0, holdMinutes: 30, exitReason: 'take_profit' as const, entryTimeMs: dayMs, exitTimeMs: dayMs + 30 * 60_000 },
+    ];
+    const result = runHistoricalMonteCarlo(trades, {
+      runs: 50, days: 10, startCapital: 1500, tradeSize: 100, maxConcurrent: 3, seed: 7,
+    });
+    expect(result.avgTradesTaken).toBeGreaterThan(0);
+    expect(result.medianMaxDrawdown).toBeGreaterThan(0);
   });
 });

@@ -94,5 +94,7 @@ function makeTrade(
     roi: exitPrice / entryPrice,
     holdMinutes: (exitTimeMs - entryTimeMs) / 60_000,
     exitReason,
+    entryTimeMs,
+    exitTimeMs,
   };
 }

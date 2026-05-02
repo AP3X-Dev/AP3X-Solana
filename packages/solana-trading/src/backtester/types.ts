@@ -44,6 +44,25 @@ export interface BacktestTrade {
   readonly roi: number;
   readonly holdMinutes: number;
   readonly exitReason: ExitReason;
+  readonly entryTimeMs?: number;
+  readonly exitTimeMs?: number;
+}
+
+/** Fixed-size portfolio replay configuration. */
+export interface PortfolioReplayConfig {
+  readonly startCapital: number;
+  readonly tradeSize: number;
+  readonly maxConcurrent?: number;
+}
+
+/** Result of replaying trades through fixed-size portfolio accounting. */
+export interface PortfolioReplayResult {
+  readonly finalEquity: number;
+  readonly returnPct: number;
+  readonly maxDrawdown: number;
+  readonly peakEquity: number;
+  readonly tradesTaken: number;
+  readonly tradesSkipped: number;
 }
 
 /** Aggregate metrics for a set of backtest trades. */
@@ -54,6 +73,9 @@ export interface BacktestMetrics {
   readonly medianRoi: number;
   readonly sharpeRatio: number;
   readonly maxDrawdown: number;
+  readonly portfolioFinal?: number;
+  readonly portfolioReturn?: number;
+  readonly tradesSkipped?: number;
   readonly fitness: number;
 }
 
@@ -77,4 +99,7 @@ export interface MonteCarloResult {
   readonly p90: number;
   readonly bustRate: number;
   readonly avgTradesTaken: number;
+  readonly avgTradesSkipped?: number;
+  readonly medianMaxDrawdown?: number;
+  readonly p90MaxDrawdown?: number;
 }

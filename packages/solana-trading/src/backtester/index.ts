@@ -5,6 +5,8 @@ export type {
   ExitRules,
   MonteCarloConfig,
   MonteCarloResult,
+  PortfolioReplayConfig,
+  PortfolioReplayResult,
   PricePoint,
   PriceSeries,
   TradeGate,
@@ -12,4 +14,5 @@ export type {
 
 export { binarySearchFirstGte, walkForwardExit } from './walk-forward.js';
 export { computeMetrics } from './metrics.js';
-export { runMonteCarlo } from './monte-carlo.js';
+export { replayPortfolio } from './portfolio.js';
+export { runHistoricalMonteCarlo, runMonteCarlo } from './monte-carlo.js';
