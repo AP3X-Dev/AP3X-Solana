@@ -56,6 +56,30 @@ describe('EventDecoderRegistry', () => {
     expect(stream.parseErrors).toEqual([]);
   });
 
+  it('uses decodeAll when a decoder emits several events per invocation', () => {
+    const tx = parseLogs([
+      `Program ${TOKEN_B58} invoke [1]`,
+      `Program log: amount=1`,
+      `Program log: amount=2`,
+      `Program ${TOKEN_B58} success`,
+    ]);
+    const multi: ProgramDecoder<TokenEvent> = {
+      programId: TOKEN,
+      decode: tokenDecoder.decode,
+      decodeAll: (chunk) => [
+        ...chunk.logs.map((l): TokenEvent => ({ type: 'transfer', amount: Number(l.split('=')[1]) })),
+        { kind: 'unknown', programId: TOKEN_B58, reason: 'trailing' },
+      ],
+    };
+    const stream = new EventDecoderRegistry().register(TOKEN, multi).decode(tx);
+    expect(stream.events.map((e) => (e.kind === 'decoded' ? (e.data as TokenEvent).amount : e.kind))).toEqual([
+      1,
+      2,
+      'unknown',
+    ]);
+    expect(stream.unknown).toHaveLength(1);
+  });
+
   it('accepts string form when registering', () => {
     const tx = parseLogs([
       `Program ${TOKEN_B58} invoke [1]`,

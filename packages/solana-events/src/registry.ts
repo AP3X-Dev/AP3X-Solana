@@ -13,11 +13,7 @@
 
 import type { PublicKey } from '@ap3x/solana-core';
 
-import type {
-  LogParseError,
-  ProgramLogChunk,
-  TransactionLog,
-} from './parse-logs';
+import type { LogParseError, ProgramLogChunk, TransactionLog } from './parse-logs';
 
 /**
  * Vertical-supplied decoder for a single program. Implementations return
@@ -34,6 +30,12 @@ export interface ProgramDecoder<TEvent = unknown> {
    * resolved against whichever decoder matches its programId.
    */
   decode(chunk: ProgramLogChunk): TEvent | UnknownEventDecode;
+  /**
+   * Optional: every event in the invocation. Programs can emit several events
+   * from one instruction (e.g. a trade and the curve completing); when present
+   * the registry uses this instead of {@link decode}.
+   */
+  decodeAll?(chunk: ProgramLogChunk): Array<TEvent | UnknownEventDecode>;
 }
 
 /**
@@ -92,10 +94,7 @@ export class EventDecoderRegistry {
    * Replaces any existing decoder for the same program ID. Returns `this`
    * for fluent chaining.
    */
-  register<T>(
-    programId: PublicKey | string,
-    decoder: ProgramDecoder<T>,
-  ): this {
+  register<T>(programId: PublicKey | string, decoder: ProgramDecoder<T>): this {
     const key = typeof programId === 'string' ? programId : programId.toBase58();
     this.decoders.set(key, decoder as ProgramDecoder);
     return this;
@@ -133,30 +132,32 @@ export class EventDecoderRegistry {
         unknown.push(u);
       } else {
         try {
-          const result = decoder.decode(chunk);
-          if (
-            result !== null &&
-            typeof result === 'object' &&
-            'kind' in result &&
-            (result as { kind: string }).kind === 'unknown'
-          ) {
-            // Decoder explicitly returned an unknown record — trust it, but
-            // ensure programId is populated so consumers don't have to dig.
-            const u = result as UnknownEventDecode;
-            const resolved: UnknownEventDecode = {
-              kind: 'unknown',
-              programId: u.programId || chunk.programId,
-              reason: u.reason,
-              rawLines: u.rawLines ?? chunk.rawLines,
-            };
-            events.push(resolved);
-            unknown.push(resolved);
-          } else {
-            events.push({
-              kind: 'decoded',
-              programId: chunk.programId,
-              data: result,
-            });
+          const results = decoder.decodeAll ? decoder.decodeAll(chunk) : [decoder.decode(chunk)];
+          for (const result of results) {
+            if (
+              result !== null &&
+              typeof result === 'object' &&
+              'kind' in result &&
+              (result as { kind: string }).kind === 'unknown'
+            ) {
+              // Decoder explicitly returned an unknown record — trust it, but
+              // ensure programId is populated so consumers don't have to dig.
+              const u = result as UnknownEventDecode;
+              const resolved: UnknownEventDecode = {
+                kind: 'unknown',
+                programId: u.programId || chunk.programId,
+                reason: u.reason,
+                rawLines: u.rawLines ?? chunk.rawLines,
+              };
+              events.push(resolved);
+              unknown.push(resolved);
+            } else {
+              events.push({
+                kind: 'decoded',
+                programId: chunk.programId,
+                data: result,
+              });
+            }
           }
         } catch (e) {
           const reason = e instanceof Error ? e.message : String(e);

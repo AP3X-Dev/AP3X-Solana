@@ -108,6 +108,16 @@ describe('bondingCurveDecoder', () => {
     }
   });
 
+  it('decodeAll returns every event in one invocation (final buy + completion)', () => {
+    const trade = encodeEvent(PUMP_SCHEMA, 'TradeEvent').bytes;
+    const complete = encodeEvent(PUMP_SCHEMA, 'CompleteEvent').bytes;
+    const junk = new Uint8Array(16).fill(0xff);
+    const all = bondingCurveDecoder.decodeAll(chunk([trade, junk, complete]));
+    expect(all.map((e) => e.kind)).toEqual(['pumpfun.trade', 'unknown', 'pumpfun.complete']);
+    // decode() still returns the first recognised event.
+    expect(bondingCurveDecoder.decode(chunk([trade, complete])).kind).toBe('pumpfun.trade');
+  });
+
   it('does not decode PumpSwap events', () => {
     const { bytes } = encodeEvent(PUMP_AMM_SCHEMA, 'BuyEvent');
     expect(bondingCurveDecoder.decode(chunk([bytes])).kind).toBe('unknown');

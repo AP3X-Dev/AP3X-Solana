@@ -73,7 +73,7 @@ describe.skipIf(!haveFixture)('full-lifecycle decoder flow', () => {
         const found = [...walkInvocations(parsed)]
           .map((s) => s.chunk)
           .filter((c) => c.programId === PUMPFUN_BONDING_CURVE_PROGRAM_ID.toBase58())
-          .map((c) => bondingCurveDecoder.decode(c))
+          .flatMap((c) => bondingCurveDecoder.decodeAll(c))
           .find((e) => e.kind === 'pumpfun.create');
         expect(found).toBeDefined();
       });
@@ -85,7 +85,7 @@ describe.skipIf(!haveFixture)('full-lifecycle decoder flow', () => {
             return [...walkInvocations(parsed)]
               .map((s) => s.chunk)
               .filter((c) => c.programId === PUMPFUN_BONDING_CURVE_PROGRAM_ID.toBase58())
-              .map((c) => bondingCurveDecoder.decode(c));
+              .flatMap((c) => bondingCurveDecoder.decodeAll(c));
           })
           .filter((e) => e.kind === 'pumpfun.complete_pump_amm_migration');
         expect(allMigrates.length).toBeGreaterThan(0);
@@ -98,7 +98,7 @@ describe.skipIf(!haveFixture)('full-lifecycle decoder flow', () => {
             return [...walkInvocations(parsed)]
               .map((s) => s.chunk)
               .filter((c) => c.programId === PUMPFUN_PUMPSWAP_PROGRAM_ID.toBase58())
-              .map((c) => pumpSwapDecoder.decode(c));
+              .flatMap((c) => pumpSwapDecoder.decodeAll(c));
           })
           .filter((e) => e.kind === 'pumpswap.buy' || e.kind === 'pumpswap.sell');
         expect(allSwaps.length).toBeGreaterThan(0);

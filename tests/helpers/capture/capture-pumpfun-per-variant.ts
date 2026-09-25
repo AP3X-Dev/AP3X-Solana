@@ -73,8 +73,9 @@ function variantsIn(logs: string[]): Map<string, string> {
           ? pumpSwapDecoder
           : null;
     if (!decoder) continue;
-    const decoded = decoder.decode(chunk);
-    if (VARIANTS.includes(decoded.kind)) found.set(decoded.kind, chunk.programId);
+    for (const decoded of decoder.decodeAll(chunk)) {
+      if (VARIANTS.includes(decoded.kind)) found.set(decoded.kind, chunk.programId);
+    }
   }
   return found;
 }

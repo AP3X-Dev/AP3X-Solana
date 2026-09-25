@@ -148,29 +148,27 @@ export async function fetchRecentTrades(
     // Walk nested invocations too: trades routed through an aggregator reach
     // pump.fun as a CPI, not a top-level instruction.
     for (const { chunk } of walkInvocations(parsed)) {
-      let decoded: unknown;
-      if (chunk.programId === BONDING_CURVE_PROGRAM_ID_STR) {
-        decoded = bondingCurveDecoder.decode(chunk);
-      } else if (chunk.programId === PUMPSWAP_PROGRAM_ID_STR) {
-        decoded = pumpSwapDecoder.decode(chunk);
-      } else {
-        continue;
+      const decoder =
+        chunk.programId === BONDING_CURVE_PROGRAM_ID_STR
+          ? bondingCurveDecoder
+          : chunk.programId === PUMPSWAP_PROGRAM_ID_STR
+            ? pumpSwapDecoder
+            : null;
+      if (!decoder) continue;
+
+      // Unknowns and non-trade events are skipped — this helper's job is
+      // trades; observability of unknown variants belongs to the
+      // registry-based pipeline.
+      for (const decoded of decoder.decodeAll(chunk)) {
+        const kind = decoded.kind;
+        if (kind !== 'pumpfun.trade' && kind !== 'pumpswap.buy' && kind !== 'pumpswap.sell') continue;
+        trades.push({
+          ...(decoded as PumpFunTradeEvent | PumpSwapBuyEvent | PumpSwapSellEvent),
+          signature: sig.signature,
+          slot: sig.slot,
+          blockTime: sig.blockTime ?? 0,
+        });
       }
-
-      // The decoder contract returns either a typed event or an
-      // UnknownEventDecode (`kind === 'unknown'`). We filter unknowns out here
-      // rather than surface them — this helper's job is trades; observability
-      // of unknown variants belongs to the registry-based pipeline.
-      if (!decoded || typeof decoded !== 'object') continue;
-      const kind = (decoded as { kind?: unknown }).kind;
-      if (kind !== 'pumpfun.trade' && kind !== 'pumpswap.buy' && kind !== 'pumpswap.sell') continue;
-
-      trades.push({
-        ...(decoded as PumpFunTradeEvent | PumpSwapBuyEvent | PumpSwapSellEvent),
-        signature: sig.signature,
-        slot: sig.slot,
-        blockTime: sig.blockTime ?? 0,
-      });
     }
   }
 

@@ -116,8 +116,10 @@ async function findGraduatedMints(pool: RpcPool): Promise<MigrateHit[]> {
       const parsed = parseLogs(tx.meta.logMessages);
       for (const { chunk } of walkInvocations(parsed)) {
         if (chunk.programId !== bondingCurveProgramId) continue;
-        const decoded = bondingCurveDecoder.decode(chunk);
-        if (decoded.kind !== 'pumpfun.complete_pump_amm_migration') continue;
+        const decoded = bondingCurveDecoder
+          .decodeAll(chunk)
+          .find((e) => e.kind === 'pumpfun.complete_pump_amm_migration');
+        if (decoded?.kind !== 'pumpfun.complete_pump_amm_migration') continue;
         const mint = decoded.mint.toBase58();
         if (seenMints.has(mint)) continue;
         seenMints.add(mint);

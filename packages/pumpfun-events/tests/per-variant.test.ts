@@ -79,11 +79,8 @@ describe.skipIf(!haveFixture)('per-variant decoder correctness', () => {
       );
       let found: PumpFunBondingCurveEvent | undefined;
       for (const chunk of chunks) {
-        const r = bondingCurveDecoder.decode(chunk);
-        if (r.kind === variant) {
-          found = r;
-          break;
-        }
+        found = bondingCurveDecoder.decodeAll(chunk).find((r): r is PumpFunBondingCurveEvent => r.kind === variant);
+        if (found) break;
       }
       expect(found).toBeDefined();
       expect(found?.kind).toBe(variant);
@@ -103,11 +100,8 @@ describe.skipIf(!haveFixture)('per-variant decoder correctness', () => {
       );
       let found: PumpSwapEvent | undefined;
       for (const chunk of chunks) {
-        const r = pumpSwapDecoder.decode(chunk);
-        if (r.kind === variant) {
-          found = r;
-          break;
-        }
+        found = pumpSwapDecoder.decodeAll(chunk).find((r): r is PumpSwapEvent => r.kind === variant);
+        if (found) break;
       }
       expect(found).toBeDefined();
       expect(found?.kind).toBe(variant);

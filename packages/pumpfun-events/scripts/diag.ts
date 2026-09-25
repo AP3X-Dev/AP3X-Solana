@@ -21,7 +21,7 @@
  */
 
 import { RpcPool } from '@ap3x/solana-connectivity';
-import { parseLogs } from '@ap3x/solana-events';
+import { parseLogs, walkInvocations } from '@ap3x/solana-events';
 import type { ProgramDecoder, UnknownEventDecode } from '@ap3x/solana-events';
 import {
   PUMPFUN_BONDING_CURVE_PROGRAM_ID,
@@ -82,17 +82,16 @@ async function probeProgram(
     if (sig.err) continue;
     const tx = (await pool.call('getTransaction', [
       sig.signature,
-      { maxSupportedTransactionVersion: 0 },
+      { maxSupportedTransactionVersion: 1 },
     ])) as TransactionResponse | null;
     if (!tx?.meta?.logMessages) continue;
     txScanned++;
 
     const parsed = parseLogs(tx.meta.logMessages);
-    for (const chunk of parsed.chunks) {
+    for (const { chunk } of walkInvocations(parsed)) {
       if (chunk.programId !== programId) continue;
       totalChunks++;
-      const decoded = decoder.decode(chunk);
-      if (decoded.kind === 'unknown') {
+      if (decoder.decode(chunk).kind === 'unknown') {
         unknownChunks++;
       }
     }

@@ -33,7 +33,7 @@ describe('derivePumpSwapPoolPda', () => {
       .find((l) => l.variantHint === 'pumpswap.create_pool');
     expect(line, 'fixture has a create_pool transaction').toBeDefined();
     const event = [...walkInvocations(parseLogs(line!.logs))]
-      .map(({ chunk }) => pumpSwapDecoder.decode(chunk))
+      .flatMap(({ chunk }) => pumpSwapDecoder.decodeAll(chunk))
       .find((e): e is PumpSwapCreatePoolEvent => e.kind === 'pumpswap.create_pool');
     expect(event).toBeDefined();
     expect(event!.index).toBe(0);
