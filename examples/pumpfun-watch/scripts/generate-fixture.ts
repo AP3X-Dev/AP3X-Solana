@@ -172,26 +172,30 @@ function records(): object[] {
   }));
 
   out.push(buildSignal(i++, BC_ID, 'pumpfun.set_params', {
-    feeRecipient: b58(FEE_RECIPIENT),
     initialVirtualTokenReserves: bi(1_073_000_000_000_000n),
     initialVirtualSolReserves: bi(30_000_000_000n),
     initialRealTokenReserves: bi(793_100_000_000_000n),
+    finalRealSolReserves: bi(85_000_000_000n),
     tokenTotalSupply: bi(1_000_000_000_000_000n),
-    feeBasisPoints: 100,
+    feeBasisPoints: bi(95n),
+    feeRecipients: [b58(FEE_RECIPIENT)],
   }));
 
-  out.push(buildSignal(i++, BC_ID, 'pumpfun.creator_fee', {
-    mint: b58(MINT_A),
-    creator: b58(CREATOR),
-    solAmount: bi(50_000_000n),
+  out.push(buildSignal(i++, BC_ID, 'pumpfun.collect_creator_fee', {
     timestamp: bi(1_700_000_400n),
+    creator: b58(CREATOR),
+    creatorFee: bi(50_000_000n),
   }));
 
-  out.push(buildSignal(i++, BC_ID, 'pumpfun.migrate', {
+  out.push(buildSignal(i++, BC_ID, 'pumpfun.complete_pump_amm_migration', {
+    user: b58(USER_A),
     mint: b58(MINT_A),
+    mintAmount: bi(206_900_000_000_000n),
+    solAmount: bi(84_990_000_000n),
+    poolMigrationFee: bi(15_000_001n),
     bondingCurve: b58(BONDING_CURVE_A),
-    pool: b58(POOL_A),
     timestamp: bi(1_700_000_500n),
+    pool: b58(POOL_A),
   }));
 
   out.push(buildSignal(i++, BC_ID, 'unknown', {
@@ -203,41 +207,43 @@ function records(): object[] {
   // --- PumpSwap events (10) ---
 
   for (let s = 0; s < 5; s++) {
-    out.push(buildSignal(i++, PS_ID, 'pumpfun.swap', {
-      pool: b58(POOL_A),
-      user: b58(s % 2 === 0 ? USER_A : USER_B),
-      inputMint: b58(s % 2 === 0 ? SOL_MINT : MINT_A),
-      outputMint: b58(s % 2 === 0 ? MINT_A : SOL_MINT),
-      inputAmount: bi(10_000_000n * BigInt(s + 1)),
-      outputAmount: bi(500_000_000n * BigInt(s + 1)),
-      poolBaseReserves: bi(100_000_000_000n + BigInt(s) * 10_000_000n),
-      poolQuoteReserves: bi(5_000_000_000n + BigInt(s) * 500_000n),
+    const isBuy = s % 2 === 0;
+    out.push(buildSignal(i++, PS_ID, isBuy ? 'pumpswap.buy' : 'pumpswap.sell', {
       timestamp: bi(1_700_001_000n + BigInt(s)),
+      ...(isBuy
+        ? { baseAmountOut: bi(500_000_000n * BigInt(s + 1)), quoteAmountIn: bi(10_000_000n * BigInt(s + 1)) }
+        : { baseAmountIn: bi(500_000_000n * BigInt(s + 1)), quoteAmountOut: bi(10_000_000n * BigInt(s + 1)) }),
+      poolBaseTokenReserves: bi(100_000_000_000n + BigInt(s) * 10_000_000n),
+      poolQuoteTokenReserves: bi(5_000_000_000n + BigInt(s) * 500_000n),
+      pool: b58(POOL_A),
+      user: b58(isBuy ? USER_A : USER_B),
     }));
   }
 
-  out.push(buildSignal(i++, PS_ID, 'pumpfun.add_liquidity', {
+  out.push(buildSignal(i++, PS_ID, 'pumpswap.deposit', {
+    timestamp: bi(1_700_002_000n),
+    lpTokenAmountOut: bi(707_106_781n),
+    baseAmountIn: bi(1_000_000_000n),
+    quoteAmountIn: bi(500_000_000n),
     pool: b58(POOL_A),
     user: b58(USER_A),
-    baseAmount: bi(1_000_000_000n),
-    quoteAmount: bi(500_000_000n),
-    lpTokens: bi(707_106_781n),
-    timestamp: bi(1_700_002_000n),
   }));
 
-  out.push(buildSignal(i++, PS_ID, 'pumpfun.remove_liquidity', {
+  out.push(buildSignal(i++, PS_ID, 'pumpswap.withdraw', {
+    timestamp: bi(1_700_002_100n),
+    lpTokenAmountIn: bi(353_553_390n),
+    baseAmountOut: bi(500_000_000n),
+    quoteAmountOut: bi(250_000_000n),
     pool: b58(POOL_A),
     user: b58(USER_B),
-    baseAmount: bi(500_000_000n),
-    quoteAmount: bi(250_000_000n),
-    lpTokens: bi(353_553_390n),
-    timestamp: bi(1_700_002_100n),
   }));
 
-  out.push(buildSignal(i++, PS_ID, 'pumpfun.admin_set_params', {
-    authority: b58(AUTHORITY),
-    newFeeBasisPoints: 30,
-    timestamp: bi(1_700_002_200n),
+  out.push(buildSignal(i++, PS_ID, 'pumpswap.create_pool', {
+    timestamp: bi(1_700_000_500n),
+    creator: b58(AUTHORITY),
+    baseMint: b58(MINT_A),
+    quoteMint: b58(SOL_MINT),
+    pool: b58(POOL_A),
   }));
 
   out.push(buildSignal(i++, PS_ID, 'unknown', {

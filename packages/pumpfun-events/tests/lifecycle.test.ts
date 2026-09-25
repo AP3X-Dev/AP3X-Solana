@@ -1,7 +1,8 @@
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { gunzipSync } from 'node:zlib';
 import { readFileSync, existsSync } from 'node:fs';
-import { parseLogs } from '@ap3x/solana-events';
+import { parseLogs, walkInvocations } from '@ap3x/solana-events';
 import {
   bondingCurveDecoder,
   pumpSwapDecoder,
@@ -9,7 +10,7 @@ import {
   PUMPFUN_PUMPSWAP_PROGRAM_ID,
 } from '../src/index.js';
 
-const FIXTURE_PATH = 'tests/fixtures/pumpfun-lifecycle.jsonl.gz';
+const FIXTURE_PATH = fileURLToPath(new URL('./fixtures/pumpfun-lifecycle.jsonl.gz', import.meta.url));
 const haveFixture = existsSync(FIXTURE_PATH);
 
 interface FixtureLine {
@@ -69,34 +70,37 @@ describe.skipIf(!haveFixture)('full-lifecycle decoder flow', () => {
         const first = sorted[0];
         expect(first).toBeDefined();
         const parsed = parseLogs(first!.logs);
-        const found = parsed.chunks
+        const found = [...walkInvocations(parsed)]
+          .map((s) => s.chunk)
           .filter((c) => c.programId === PUMPFUN_BONDING_CURVE_PROGRAM_ID.toBase58())
           .map((c) => bondingCurveDecoder.decode(c))
           .find((e) => e.kind === 'pumpfun.create');
         expect(found).toBeDefined();
       });
 
-      it('contains a MigrateEvent marking graduation', () => {
+      it('contains a CompletePumpAmmMigrationEvent marking graduation', () => {
         const allMigrates = sorted
           .flatMap((t) => {
             const parsed = parseLogs(t.logs);
-            return parsed.chunks
+            return [...walkInvocations(parsed)]
+              .map((s) => s.chunk)
               .filter((c) => c.programId === PUMPFUN_BONDING_CURVE_PROGRAM_ID.toBase58())
               .map((c) => bondingCurveDecoder.decode(c));
           })
-          .filter((e) => e.kind === 'pumpfun.migrate');
+          .filter((e) => e.kind === 'pumpfun.complete_pump_amm_migration');
         expect(allMigrates.length).toBeGreaterThan(0);
       });
 
-      it('contains PumpSwap SwapEvents after graduation', () => {
+      it('contains PumpSwap buys or sells after graduation', () => {
         const allSwaps = sorted
           .flatMap((t) => {
             const parsed = parseLogs(t.logs);
-            return parsed.chunks
+            return [...walkInvocations(parsed)]
+              .map((s) => s.chunk)
               .filter((c) => c.programId === PUMPFUN_PUMPSWAP_PROGRAM_ID.toBase58())
               .map((c) => pumpSwapDecoder.decode(c));
           })
-          .filter((e) => e.kind === 'pumpfun.swap');
+          .filter((e) => e.kind === 'pumpswap.buy' || e.kind === 'pumpswap.sell');
         expect(allSwaps.length).toBeGreaterThan(0);
       });
     });
@@ -104,7 +108,7 @@ describe.skipIf(!haveFixture)('full-lifecycle decoder flow', () => {
 });
 
 describe.skipIf(haveFixture)('full-lifecycle integration (skipped — fixture absent)', () => {
-  it('skips; run pnpm capture:pumpfun-lifecycle with HELIUS_API_KEY to populate', () => {
+  it('skips; run pnpm capture:pumpfun-lifecycle to populate', () => {
     expect(haveFixture).toBe(false);
   });
 });

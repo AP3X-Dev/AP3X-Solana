@@ -26,7 +26,7 @@ import { gzipSync } from 'node:zlib';
 import { writeFileSync } from 'node:fs';
 
 import { RpcPool } from '@ap3x/solana-connectivity';
-import { parseLogs } from '@ap3x/solana-events';
+import { parseLogs, walkInvocations } from '@ap3x/solana-events';
 import {
   PUMPFUN_BONDING_CURVE_PROGRAM_ID,
   PUMPFUN_PUMPSWAP_PROGRAM_ID,
@@ -109,15 +109,15 @@ async function findGraduatedMints(pool: RpcPool): Promise<MigrateHit[]> {
 
       const tx = (await pool.call('getTransaction', [
         sig.signature,
-        { maxSupportedTransactionVersion: 0 },
+        { maxSupportedTransactionVersion: 1 },
       ])) as TransactionResponse | null;
       if (!tx?.meta?.logMessages) continue;
 
       const parsed = parseLogs(tx.meta.logMessages);
-      for (const chunk of parsed.chunks) {
+      for (const { chunk } of walkInvocations(parsed)) {
         if (chunk.programId !== bondingCurveProgramId) continue;
         const decoded = bondingCurveDecoder.decode(chunk);
-        if (decoded.kind !== 'pumpfun.migrate') continue;
+        if (decoded.kind !== 'pumpfun.complete_pump_amm_migration') continue;
         const mint = decoded.mint.toBase58();
         if (seenMints.has(mint)) continue;
         seenMints.add(mint);
@@ -241,7 +241,7 @@ async function captureTracesForMint(
 
     const tx = (await pool.call('getTransaction', [
       sig.signature,
-      { maxSupportedTransactionVersion: 0 },
+      { maxSupportedTransactionVersion: 1 },
     ])) as TransactionResponse | null;
     if (!tx?.meta?.logMessages) continue;
 

@@ -29,7 +29,8 @@
     "capture:pumpfun-lifecycle": "tsx tests/helpers/capture/capture-pumpfun-lifecycle.ts",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "turbo run build && changeset publish"
+    "release": "turbo run build && changeset publish",
+    "capture:pumpfun-instructions": "tsx tests/helpers/capture/capture-pumpfun-instructions.ts"
   },
   "devDependencies": {
     "@ap3x/pumpfun-events": "workspace:*",

@@ -4,3 +4,8 @@ export * from './bonding-curve/event-types.js';
 export { bondingCurveDecoder } from './bonding-curve/decoder.js';
 export * from './pumpswap/event-types.js';
 export { pumpSwapDecoder } from './pumpswap/decoder.js';
+export type * from './idl-types.js';
+export { decodeIdlAccount, decodeIdlEvent, eventKindSuffix, camelCase } from './idl-decoder.js';
+export type { DecodedIdlEvent } from './idl-decoder.js';
+export { PUMP_SCHEMA, PUMP_AMM_SCHEMA } from './generated/idl-schema.js';
+export { encodeIdlFields, encodeIdlValue } from './idl-encoder.js';

@@ -1,40 +1,22 @@
 /**
- * `curveState` — read and decode the pump.fun bonding-curve account.
+ * Reading pump.fun bonding-curve program state.
  *
- * The bonding curve is a per-mint Anchor account owned by the pump.fun
- * bonding-curve program. It carries the reserves the program uses to quote
- * buys/sells and the "complete" flag that signals migration to PumpSwap.
+ *   - {@link deriveBondingCurvePda} — PDA derivation from a mint.
+ *   - {@link decodeCurveState} / {@link curveState} — the per-mint `BondingCurve` account.
+ *   - {@link decodeGlobalState} / {@link globalState} — the singleton `Global` account
+ *     (fee recipients and fee rates the trade builders need).
  *
- * This module provides three layers:
- *
- *   1. {@link deriveBondingCurvePda} — pure PDA derivation from a mint.
- *   2. {@link decodeCurveState}      — pure Borsh decode of the account bytes.
- *   3. {@link curveState}            — one-shot RPC fetch + decode, stateless.
- *
- * Ecosystem-dep policy: only the substrate packages plus `@ap3x/pumpfun-events`
- * (for `BorshReader` and the program ID). No runtime dependency on web3.js,
- * spl-token, or Metaplex libraries.
+ * Layouts come from the vendored IDL via `decodeIdlAccount`.
  */
 
 import { PublicKey } from '@ap3x/solana-core';
 import { findProgramAddress } from '@ap3x/solana-tx';
-import { BorshReader, PUMPFUN_BONDING_CURVE_PROGRAM_ID } from '@ap3x/pumpfun-events';
+import { decodeIdlAccount, PUMP_SCHEMA, PUMPFUN_BONDING_CURVE_PROGRAM_ID } from '@ap3x/pumpfun-events';
 import type { RpcPool } from '@ap3x/solana-connectivity';
 
 /**
- * Decoded pump.fun bonding-curve state.
- *
- * Reserve fields are `bigint` because the on-chain layout is `u64`; a
- * bonding curve can legitimately hold more lamports than `Number.MAX_SAFE_INTEGER`
- * over its lifetime.
- *
- *   - `virtualSolReserves` / `virtualTokenReserves` — the curve's constant-product
- *     quote reserves (not physical custody).
- *   - `realSolReserves` / `realTokenReserves` — what the curve actually holds.
- *   - `complete` — `true` once the curve has migrated (no further trading on
- *     the bonding-curve program; liquidity lives on PumpSwap).
- *   - `createdAt` — unix seconds. Downcast from `i64`; a negative or post-2106
- *     timestamp is implausible for the lifetime of the program.
+ * Decoded `BondingCurve` account. pump.fun now supports non-SOL quote mints;
+ * the `*Sol*` fields hold the quote-side reserves (lamports for SOL curves).
  */
 export interface CurveState {
   mint: PublicKey;
@@ -44,24 +26,16 @@ export interface CurveState {
   realSolReserves: bigint;
   realTokenReserves: bigint;
   tokenTotalSupply: bigint;
+  /** `true` once the curve has sold out; trading moves to PumpSwap after migration. */
   complete: boolean;
+  /** Creator credited with creator fees; seeds the `creator_vault` account. */
   creator: PublicKey;
-  createdAt: number;
+  /** Quote mint, when the account carries it (absent on older curves = SOL). */
+  quoteMint?: PublicKey;
+  /** Cashback coins route the creator fee to traders; sells pass an extra account. */
+  isCashbackCoin: boolean;
 }
 
-/**
- * Thrown when raw account bytes fail to match the expected Anchor layout —
- * either the buffer is shorter than the minimum expected size, a field read
- * runs off the end, or the discriminator's tail bytes are malformed.
- *
- * Carries:
- *   - `expected` — a human-readable label for the layout we were trying to match
- *     (e.g. `"bonding-curve"`). Not the full schema, just a tag.
- *   - `observed` — the raw bytes that failed, so callers can dump them for a
- *     fixture-based regression test without the error having to stringify them.
- *   - `field`    — optional: the field name that was being read when the
- *     underlying decoder threw.
- */
 export class AccountLayoutError extends Error {
   constructor(
     public readonly expected: string,
@@ -73,110 +47,92 @@ export class AccountLayoutError extends Error {
   }
 }
 
-/**
- * Derive the bonding-curve PDA for a pump.fun mint.
- *
- * Seed recipe (matches the on-chain program):
- *   `[b"bonding-curve", mint.toBuffer()]`
- *
- * The search runs bumps 255 → 0; the first off-curve hash wins. Deterministic
- * and dependency-light (only `@noble/ed25519` via `@ap3x/solana-tx`).
- */
 export function deriveBondingCurvePda(mint: PublicKey): { address: PublicKey; bump: number } {
   const seeds = [new TextEncoder().encode('bonding-curve'), mint.toBuffer()];
   return findProgramAddress(seeds, PUMPFUN_BONDING_CURVE_PROGRAM_ID);
 }
 
-/**
- * Minimum byte size of a bonding-curve account. Covers:
- *   8  bytes discriminator
- *   40 bytes = 5 * u64 (virtualToken, virtualSol, realToken, realSol, totalSupply)
- *   1  byte  complete flag
- *   32 bytes creator pubkey
- *   8  bytes created_at i64
- * = 89 bytes.
- *
- * Real accounts may have padding; we require at least this many bytes.
- */
-const EXPECTED_CURVE_STATE_SIZE = 89;
-
-/**
- * Decode raw bonding-curve account bytes into a {@link CurveState}.
- *
- * The 8-byte Anchor discriminator is skipped; callers that need to verify
- * the account type should compare it upstream (e.g. when wiring fixtures).
- * This function is deliberately forgiving of that step because a fetched
- * account is already known to belong to the bonding-curve program — the PDA
- * derivation in {@link curveState} guarantees it.
- *
- * Layout (Anchor `#[account]`):
- *   [0..8]    discriminator (skipped)
- *   [8..16]   virtualTokenReserves: u64 LE
- *   [16..24]  virtualSolReserves:   u64 LE
- *   [24..32]  realTokenReserves:    u64 LE
- *   [32..40]  realSolReserves:      u64 LE
- *   [40..48]  tokenTotalSupply:     u64 LE
- *   [48..49]  complete:             bool
- *   [49..81]  creator:              Pubkey (32 bytes)
- *   [81..89]  created_at:           i64 LE (unix seconds)
- */
-export function decodeCurveState(bytes: Uint8Array, mint: PublicKey): CurveState {
-  if (bytes.length < EXPECTED_CURVE_STATE_SIZE) {
-    throw new AccountLayoutError('bonding-curve', bytes);
-  }
-
-  // Skip 8-byte discriminator.
-  const r = new BorshReader(bytes.slice(8));
-  try {
-    const virtualTokenReserves = r.readU64LE();
-    const virtualSolReserves = r.readU64LE();
-    const realTokenReserves = r.readU64LE();
-    const realSolReserves = r.readU64LE();
-    const tokenTotalSupply = r.readU64LE();
-    const complete = r.readBool();
-    const creator = r.readPublicKey();
-    const createdAt = Number(r.readI64LE());
-
-    return {
-      mint,
-      bondingCurve: deriveBondingCurvePda(mint).address,
-      virtualSolReserves,
-      virtualTokenReserves,
-      realSolReserves,
-      realTokenReserves,
-      tokenTotalSupply,
-      complete,
-      creator,
-      createdAt,
-    };
-  } catch (err) {
-    throw new AccountLayoutError('bonding-curve', bytes, (err as Error).message);
-  }
+/** `["bonding-curve-v2", mint]` — required trailing account on bonding-curve trades. */
+export function deriveBondingCurveV2Pda(mint: PublicKey): { address: PublicKey; bump: number } {
+  return findProgramAddress([new TextEncoder().encode('bonding-curve-v2'), mint.toBuffer()], PUMPFUN_BONDING_CURVE_PROGRAM_ID);
 }
 
-/**
- * One-shot fetch: derive the bonding-curve PDA for `mint`, fetch the account
- * via `getAccountInfo`, and decode the returned bytes.
- *
- * Stateless — each call is an independent RPC round-trip. No caching, no
- * polling. Callers that need live updates subscribe via Geyser or wrap this
- * in their own poll loop.
- *
- * Throws {@link AccountLayoutError} if the account does not exist or the
- * returned bytes fail to decode.
- */
-export async function curveState(rpcPool: RpcPool, mint: PublicKey): Promise<CurveState> {
-  const { address: bondingCurvePda } = deriveBondingCurvePda(mint);
+export function deriveGlobalPda(): { address: PublicKey; bump: number } {
+  return findProgramAddress([new TextEncoder().encode('global')], PUMPFUN_BONDING_CURVE_PROGRAM_ID);
+}
+
+function decodeAccount(name: string, bytes: Uint8Array, required: string[]): Record<string, unknown> {
+  let fields: Record<string, unknown>;
+  try {
+    fields = decodeIdlAccount(PUMP_SCHEMA, name, bytes);
+  } catch (err) {
+    throw new AccountLayoutError(name, bytes, (err as Error).message);
+  }
+  const missing = required.find((f) => !(f in fields));
+  if (missing) throw new AccountLayoutError(name, bytes, missing);
+  return fields;
+}
+
+export function decodeCurveState(bytes: Uint8Array, mint: PublicKey): CurveState {
+  const f = decodeAccount('BondingCurve', bytes, [
+    'virtualTokenReserves', 'virtualQuoteReserves', 'realTokenReserves', 'realQuoteReserves',
+    'tokenTotalSupply', 'complete', 'creator',
+  ]);
+  return {
+    mint,
+    bondingCurve: deriveBondingCurvePda(mint).address,
+    virtualSolReserves: f['virtualQuoteReserves'] as bigint,
+    virtualTokenReserves: f['virtualTokenReserves'] as bigint,
+    realSolReserves: f['realQuoteReserves'] as bigint,
+    realTokenReserves: f['realTokenReserves'] as bigint,
+    tokenTotalSupply: f['tokenTotalSupply'] as bigint,
+    complete: f['complete'] as boolean,
+    creator: f['creator'] as PublicKey,
+    isCashbackCoin: (f['isCashbackCoin'] as boolean | undefined) ?? false,
+    ...(f['quoteMint'] ? { quoteMint: f['quoteMint'] as PublicKey } : {}),
+  };
+}
+
+/** Decoded `Global` account — only the fields trading needs. */
+export interface GlobalState {
+  /** Primary fee recipient. */
+  feeRecipient: PublicKey;
+  /** Additional fee recipients the program accepts (zero keys removed). */
+  feeRecipients: PublicKey[];
+  /** Buyback fee recipients (zero keys removed); trades must pass one. */
+  buybackFeeRecipients: PublicKey[];
+  feeBasisPoints: bigint;
+  creatorFeeBasisPoints: bigint;
+}
+
+export function decodeGlobalState(bytes: Uint8Array): GlobalState {
+  const f = decodeAccount('Global', bytes, ['feeRecipient', 'feeBasisPoints']);
+  const zero = PublicKey.fromBytes(new Uint8Array(32));
+  return {
+    feeRecipient: f['feeRecipient'] as PublicKey,
+    feeRecipients: ((f['feeRecipients'] as PublicKey[] | undefined) ?? []).filter((k) => !k.equals(zero)),
+    buybackFeeRecipients: ((f['buybackFeeRecipients'] as PublicKey[] | undefined) ?? []).filter((k) => !k.equals(zero)),
+    feeBasisPoints: f['feeBasisPoints'] as bigint,
+    creatorFeeBasisPoints: (f['creatorFeeBasisPoints'] as bigint | undefined) ?? 0n,
+  };
+}
+
+export async function fetchAccountData(rpcPool: RpcPool, address: PublicKey, label: string): Promise<Uint8Array> {
   const response = (await rpcPool.call('getAccountInfo', [
-    bondingCurvePda.toBase58(),
+    address.toBase58(),
     { encoding: 'base64' },
   ])) as { value: { data: [string, string] } | null };
-
   if (!response?.value?.data) {
-    throw new AccountLayoutError('bonding-curve', new Uint8Array(), 'account not found');
+    throw new AccountLayoutError(label, new Uint8Array(), 'account not found');
   }
+  return Uint8Array.from(Buffer.from(response.value.data[0], 'base64'));
+}
 
-  const [base64Data] = response.value.data;
-  const bytes = Uint8Array.from(Buffer.from(base64Data, 'base64'));
+export async function curveState(rpcPool: RpcPool, mint: PublicKey): Promise<CurveState> {
+  const bytes = await fetchAccountData(rpcPool, deriveBondingCurvePda(mint).address, 'BondingCurve');
   return decodeCurveState(bytes, mint);
+}
+
+export async function globalState(rpcPool: RpcPool): Promise<GlobalState> {
+  return decodeGlobalState(await fetchAccountData(rpcPool, deriveGlobalPda().address, 'Global'));
 }

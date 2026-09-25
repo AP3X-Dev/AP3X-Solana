@@ -1,8 +1,9 @@
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { gunzipSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
-import { parseLogs } from '@ap3x/solana-events';
+import { parseLogs, walkInvocations } from '@ap3x/solana-events';
 import {
   bondingCurveDecoder,
   pumpSwapDecoder,
@@ -11,7 +12,7 @@ import {
 } from '../src/index.js';
 import type { PumpFunBondingCurveEvent, PumpSwapEvent } from '../src/index.js';
 
-const FIXTURE_PATH = 'tests/fixtures/pumpfun-per-variant.jsonl.gz';
+const FIXTURE_PATH = fileURLToPath(new URL('./fixtures/pumpfun-per-variant.jsonl.gz', import.meta.url));
 
 interface FixtureLine {
   programId: string;
@@ -53,27 +54,27 @@ describe.skipIf(!haveFixture)('per-variant decoder correctness', () => {
     'pumpfun.create',
     'pumpfun.trade',
     'pumpfun.complete',
-    'pumpfun.set_params',
-    'pumpfun.creator_fee',
-    'pumpfun.migrate',
+    'pumpfun.complete_pump_amm_migration',
+    'pumpfun.collect_creator_fee',
   ];
 
   const pumpSwapVariants = [
-    'pumpfun.swap',
-    'pumpfun.add_liquidity',
-    'pumpfun.remove_liquidity',
-    'pumpfun.admin_set_params',
+    'pumpswap.buy',
+    'pumpswap.sell',
+    'pumpswap.deposit',
+    'pumpswap.withdraw',
+    'pumpswap.create_pool',
   ];
 
   for (const variant of bondingCurveVariants) {
     it(`decodes ${variant} from a real captured event`, ({ skip }) => {
       const line = fixture.find((f) => f.variantHint === variant);
       if (!line) {
-        skip(`fixture missing ${variant} — rerun pnpm capture:pumpfun-per-variant with a wider scan window`);
+        skip(`fixture missing ${variant} — rerun pnpm capture:pumpfun-per-variant (see SCAN_ADDRESSES)`);
         return;
       }
       const parsed = parseLogs(line.logs);
-      const chunks = parsed.chunks.filter(
+      const chunks = [...walkInvocations(parsed)].map((s) => s.chunk).filter(
         (c) => c.programId === PUMPFUN_BONDING_CURVE_PROGRAM_ID.toBase58(),
       );
       let found: PumpFunBondingCurveEvent | undefined;
@@ -93,11 +94,11 @@ describe.skipIf(!haveFixture)('per-variant decoder correctness', () => {
     it(`decodes ${variant} from a real captured event`, ({ skip }) => {
       const line = fixture.find((f) => f.variantHint === variant);
       if (!line) {
-        skip(`fixture missing ${variant} — rerun pnpm capture:pumpfun-per-variant with a wider scan window`);
+        skip(`fixture missing ${variant} — rerun pnpm capture:pumpfun-per-variant (see SCAN_ADDRESSES)`);
         return;
       }
       const parsed = parseLogs(line.logs);
-      const chunks = parsed.chunks.filter(
+      const chunks = [...walkInvocations(parsed)].map((s) => s.chunk).filter(
         (c) => c.programId === PUMPFUN_PUMPSWAP_PROGRAM_ID.toBase58(),
       );
       let found: PumpSwapEvent | undefined;
@@ -115,7 +116,7 @@ describe.skipIf(!haveFixture)('per-variant decoder correctness', () => {
 });
 
 describe.skipIf(haveFixture)('per-variant tests (skipped — fixture absent)', () => {
-  it('skips; run pnpm capture:pumpfun-per-variant with HELIUS_API_KEY to populate', () => {
+  it('skips; run pnpm capture:pumpfun-per-variant to populate', () => {
     expect(haveFixture).toBe(false);
   });
 });

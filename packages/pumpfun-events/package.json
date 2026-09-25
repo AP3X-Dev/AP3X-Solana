@@ -7,16 +7,23 @@
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "diag": "tsx scripts/diag.ts"
+    "diag": "tsx scripts/diag.ts",
+    "gen:idl": "node scripts/gen-idl-schema.mjs"
   },
   "dependencies": {
     "@ap3x/solana-core": "workspace:*",

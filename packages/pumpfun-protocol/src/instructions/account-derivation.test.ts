@@ -143,9 +143,8 @@ describe('derivePumpSwapPoolPda', () => {
   });
 
   it('is under the PumpSwap program', () => {
-    // Spec check: the seed is ASSUMED `[b"pool", mint]`; if on-chain
-    // verification shows a different recipe, update the helper and this
-    // assertion together.
+    // The canonical seeds are checked against a real migration in
+    // pumpswap/pool-state.test.ts.
     expect(PUMPFUN_PUMPSWAP_PROGRAM_ID.toBase58()).toBe(
       'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA',
     );

@@ -14,7 +14,7 @@
  *   3. `parseLogs` + `bondingCurveDecoder.decode` / `pumpSwapDecoder.decode`
  *      to turn program log bytes into typed events.
  *   4. Filter to the trade-shaped events (`pumpfun.trade` on the curve,
- *      `pumpfun.swap` on PumpSwap) and annotate each with
+ *      `pumpswap.buy` / `pumpswap.sell` on PumpSwap) and annotate each with
  *      `{ signature, slot, blockTime }` so downstream consumers have a
  *      complete record without re-walking the RPC response.
  *
@@ -33,7 +33,7 @@
 
 import type { PublicKey } from '@ap3x/solana-core';
 import type { RpcPool } from '@ap3x/solana-connectivity';
-import { parseLogs } from '@ap3x/solana-events';
+import { parseLogs, walkInvocations } from '@ap3x/solana-events';
 import {
   bondingCurveDecoder,
   pumpSwapDecoder,
@@ -42,7 +42,8 @@ import {
 } from '@ap3x/pumpfun-events';
 import type {
   PumpFunTradeEvent,
-  PumpSwapSwapEvent,
+  PumpSwapBuyEvent,
+  PumpSwapSellEvent,
 } from '@ap3x/pumpfun-events';
 import { deriveBondingCurvePda } from './curve/state.js';
 
@@ -80,7 +81,7 @@ export interface RecentTradesWindow {
  * are filtered out here because they're not trades — surfacing them through
  * the same type would force every caller to re-discriminate the union.
  */
-export type UnifiedTrade = (PumpFunTradeEvent | PumpSwapSwapEvent) & {
+export type UnifiedTrade = (PumpFunTradeEvent | PumpSwapBuyEvent | PumpSwapSellEvent) & {
   signature: string;
   slot: number;
   blockTime: number;
@@ -137,14 +138,16 @@ export async function fetchRecentTrades(
   for (const sig of sigsRaw) {
     const tx = (await rpcPool.call('getTransaction', [
       sig.signature,
-      { maxSupportedTransactionVersion: 0 },
+      { maxSupportedTransactionVersion: 1 },
     ])) as TransactionResponse | null;
 
     const logMessages = tx?.meta?.logMessages;
     if (!logMessages || logMessages.length === 0) continue;
 
     const parsed = parseLogs(logMessages);
-    for (const chunk of parsed.chunks) {
+    // Walk nested invocations too: trades routed through an aggregator reach
+    // pump.fun as a CPI, not a top-level instruction.
+    for (const { chunk } of walkInvocations(parsed)) {
       let decoded: unknown;
       if (chunk.programId === BONDING_CURVE_PROGRAM_ID_STR) {
         decoded = bondingCurveDecoder.decode(chunk);
@@ -160,10 +163,10 @@ export async function fetchRecentTrades(
       // of unknown variants belongs to the registry-based pipeline.
       if (!decoded || typeof decoded !== 'object') continue;
       const kind = (decoded as { kind?: unknown }).kind;
-      if (kind !== 'pumpfun.trade' && kind !== 'pumpfun.swap') continue;
+      if (kind !== 'pumpfun.trade' && kind !== 'pumpswap.buy' && kind !== 'pumpswap.sell') continue;
 
       trades.push({
-        ...(decoded as PumpFunTradeEvent | PumpSwapSwapEvent),
+        ...(decoded as PumpFunTradeEvent | PumpSwapBuyEvent | PumpSwapSellEvent),
         signature: sig.signature,
         slot: sig.slot,
         blockTime: sig.blockTime ?? 0,

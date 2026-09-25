@@ -40,7 +40,7 @@ applies across the monorepo and covers pump.fun packages too.
 **Stateless.** `@ap3x/pumpfun-protocol` holds no lifecycle state, no
 background tasks, no in-memory stream buffers. Live streaming is the runtime's
 `SignalQueue` responsibility; callers wanting live pump.fun trades subscribe
-to the queue filtering for `pumpfun.trade` / `pumpfun.swap` kinds. Historical
+to the queue filtering for `pumpfun.trade` / `pumpswap.buy` / `pumpswap.sell` kinds. Historical
 backfill of older windows lives in PRP-04's event store.
 
 ---
@@ -204,7 +204,7 @@ sequenceDiagram
     participant R as routing.buy / routing.sell
     participant State as curveState / pumpSwapPoolState
     participant BC as buildBuy / buildSell<br/>(bonding curve)
-    participant PS as buildPumpSwapSwap<br/>(PumpSwap)
+    participant PS as buildPumpSwapSell<br/>(PumpSwap)
     participant Exec as Executor
 
     Note over Chain: bonding curve reaches threshold
@@ -213,8 +213,8 @@ sequenceDiagram
     Q-->>Strat: onSignal(completeSignal)
 
     Note over Chain: pump.fun admin migration (no caller builder)
-    Chain-->>Dec: MigrateEvent log payload
-    Dec-->>Q: Signal { kind: "pumpfun.migrate", mint, pumpSwapPool, ... }
+    Chain-->>Dec: CompletePumpAmmMigrationEvent log payload
+    Dec-->>Q: Signal { kind: "pumpfun.complete_pump_amm_migration", mint, pool, ... }
     Q-->>Strat: onSignal(migrateSignal)
     Note over Strat: Strategy observes graduation has<br/>finalised — positions on this mint<br/>now trade on PumpSwap
 
@@ -223,13 +223,13 @@ sequenceDiagram
     R->>State: curveState(mint)
     State-->>R: { complete: true, ... }
     alt complete === true
-        R->>State: pumpSwapPoolState(pool)
-        State-->>R: { baseReserves, quoteReserves, feeBasisPoints }
-        R->>R: ammSolOut(tokenAmount, reserves, fee)<br/>derive 99%-headroom minOutputAmount
-        R->>PS: buildPumpSwapSwap({ pool, inputMint=mint, outputMint=WSOL, ... })
+        R->>State: pumpSwapPoolState(canonical pool) + pumpSwapGlobalConfig()
+        State-->>R: { pool accounts, coinCreator, fee recipients }
+        R->>PS: buildPumpSwapSell({ pool, baseAmountIn, minQuoteAmountOut=minSolOut, ... })
         PS-->>R: Instruction
     else complete === false
-        R->>BC: buildSell({ mint, user, tokenAmount, minSolOut, userTokenAccount })
+        R->>State: globalState()
+        R->>BC: buildSell({ mint, user, feeRecipient, creator, amount, minSolOutput, ... })
         BC-->>R: Instruction
     end
     R-->>Strat: Instruction
@@ -238,28 +238,31 @@ sequenceDiagram
 
 **Key points:**
 
-- `CompleteEvent` and `MigrateEvent` are distinct decoded variants on the
-  bonding-curve program. `CompleteEvent` fires when the curve reaches
-  graduation threshold; `MigrateEvent` fires when pump.fun's admin path
-  performs the actual migration of reserves to PumpSwap. Strategies should
-  key off `pumpfun.migrate` (not `pumpfun.complete`) as the authoritative
-  "token now lives on PumpSwap" signal — there is a short window between the
-  two where the pool may not yet be fully initialised.
+- `CompleteEvent` and `CompletePumpAmmMigrationEvent` are distinct decoded
+  variants on the bonding-curve program. `CompleteEvent` fires when the curve
+  sells out; `CompletePumpAmmMigrationEvent` fires when pump.fun's admin path
+  migrates the reserves into the canonical PumpSwap pool (the same transaction
+  carries PumpSwap's `CreatePoolEvent`). Strategies should key off
+  `pumpfun.complete_pump_amm_migration` (not `pumpfun.complete`) as the
+  authoritative "token now lives on PumpSwap" signal — there is a window
+  between the two where the pool does not exist yet.
 - `routing.buy` / `routing.sell` perform one `curveState` RPC round-trip per
   invocation, plus one `pumpSwapPoolState` round-trip on the post-graduation
   branch. Strategies trading the same mint in a tight loop should cache the
-  state and call the raw builders (`buildBuy`, `buildSell`,
-  `buildPumpSwapSwap`) directly to avoid repeated round-trips.
-- Post-graduation slippage is derived from live pool reserves. `routing.buy`
-  computes `ammTokensOut` from `(solIn, reserves, fee)` and applies a 1%
-  headroom (× 99/100) as `minOutputAmount`. `routing.sell` computes
-  `ammSolOut` symmetrically; the caller's `minSolOut` acts as an additional
-  floor when non-zero and tighter than the computed headroom — the router
-  never silently loosens a caller's bound.
+  state and call the raw builders (`buildBuy` / `buildBuyExactSolIn` /
+  `buildSell`, `buildPumpSwapBuy` / `buildPumpSwapBuyExactQuoteIn` /
+  `buildPumpSwapSell`) directly to avoid repeated round-trips.
+- Slippage is the caller's: `minTokensOut` / `minSolOut` pass straight
+  through. Pump.fun fees are tiered by its fee program, so a client-side
+  quote would only be approximate.
+- PumpSwap has separate `buy` / `buy_exact_quote_in` / `sell`
+  instructions; there is no single bidirectional swap. Every trade on either
+  program also carries trailing accounts added in pump.fun's April 2026
+  upgrade (`bonding-curve-v2` / `pool-v2` and a buyback fee recipient).
 - There is **no `buildMigrate` builder.** Migration is triggered by the
   pump.fun program itself on an admin path. Callers cannot — and should not —
-  construct migration instructions. The decoded `MigrateEvent` is observation
-  only.
+  construct migration instructions. The decoded migration event is
+  observation only.
 
 ---
 
@@ -328,10 +331,17 @@ All builders return `{ programId, accounts, data }` records compatible with
 
 | Builder | Inputs | Output program |
 |---|---|---|
-| `buildCreate(params: CreateParams)` | name, symbol, uri, mint, creator, authority | bonding curve |
-| `buildBuy(params: BuyParams)` | mint, user, solIn, maxSolCost, userTokenAccount | bonding curve |
-| `buildSell(params: SellParams)` | mint, user, tokenAmount, minSolOut, userTokenAccount | bonding curve |
-| `buildPumpSwapSwap(params: PumpSwapSwapParams)` | pool, user, input/output mints + accounts, inputAmount, minOutputAmount | PumpSwap AMM |
+| `buildCreate(params: CreateParams)` | mint, payer, creator, name, symbol, uri | bonding curve |
+| `buildBuy(params: BuyParams)` | trade accounts, amount (tokens out), maxSolCost | bonding curve |
+| `buildBuyExactSolIn(params: BuyExactSolInParams)` | trade accounts, spendableSolIn, minTokensOut | bonding curve |
+| `buildSell(params: SellParams)` | trade accounts, amount, minSolOutput, cashback? | bonding curve |
+| `buildPumpSwapBuy(params: PumpSwapBuyParams)` | pool accounts, user, fee recipients, baseAmountOut, maxQuoteAmountIn | PumpSwap AMM |
+| `buildPumpSwapBuyExactQuoteIn(params)` | pool accounts, user, fee recipients, spendableQuoteIn, minBaseAmountOut | PumpSwap AMM |
+| `buildPumpSwapSell(params: PumpSwapSellParams)` | pool accounts, user, fee recipients, baseAmountIn, minQuoteAmountOut | PumpSwap AMM |
+
+Bonding-curve "trade accounts" are the mint, user, `feeRecipient` and
+`buybackFeeRecipient` (from `globalState`) and the curve's `creator` (from
+`curveState`); everything else is derived from the IDL.
 
 **Not in scope for PRP-02.5:** `buildMigrate` (admin-only; see above),
 `buildSetParams` (admin-only), authority-revocation builders (Tier-3
@@ -391,49 +401,43 @@ production code breaks.
 
 ### Defense 4 — Fixture regression suite
 
-`tests/fixtures/pumpfun-per-variant.jsonl.gz` (~100 events, one per variant)
-and `tests/fixtures/pumpfun-lifecycle.jsonl.gz` (~500 events, full
-create → trade → complete → migrate → swap traces for 2-3 tokens) catch
-decoder regressions at `pnpm test`. Both are captured via Helius free tier;
-capture scripts live at `tests/helpers/capture/capture-pumpfun-*.ts`.
+`packages/pumpfun-events/tests/fixtures/pumpfun-per-variant.jsonl.gz` (one
+real transaction per event variant) and
+`packages/pumpfun-protocol/tests/fixtures/pumpfun-instructions.json` (one real
+instruction per builder) catch decoder and builder regressions at `pnpm test`.
+Capture scripts live at `tests/helpers/capture/capture-pumpfun-*.ts` and work
+against the public RPC (set `RPC_URL` or `HELIUS_API_KEY` for a faster one).
+The lifecycle fixture (`pumpfun-lifecycle.jsonl.gz`) is not captured yet; its
+test skips until it is.
 
 ---
 
-## Unverified assumptions and known risk areas
+## Keeping layouts current
 
-Two areas of the PRP-02.5 surface shipped with real-captured fixtures
-validating the happy path, but the team flagged them as "confirm under
-production load before relying on edge cases":
+### Layouts come from the published IDL
 
-### PumpSwap pool account layout
+Event and instruction discriminators, event and account field layouts,
+instruction account lists and PDA seeds all come from pump.fun's published
+IDLs, vendored at `packages/pumpfun-events/idl/` (see the README there for
+the source commit). `pnpm --filter @ap3x/pumpfun-events gen:idl` regenerates
+`src/generated/idl-schema.ts` after an update.
 
-The PumpSwap AMM is the post-graduation side of the boundary. Pump.fun did
-not publish a canonical Anchor IDL at the time of PRP-02.5 capture; the
-account layout used by `pumpSwapPoolState` was derived from observed
-accounts plus cross-reference with the pump.fun team's (unofficial) source
-drops. The diag probe exercises live decode nightly, but any field added or
-reordered in a silent upgrade would not show up as an
-`UnknownEventDecode` — account decode is separate from log decode. **Risk
-mitigation: treat `pumpSwapPoolState` drift as a manual check when the diag
-alarms; re-read against a freshly observed account if field values look
-off.**
+Programs append fields to events and accounts over time, so decoders accept
+any prefix of the current layout that still carries each record's required
+fields. Required accounts added after an IDL ships are passed as trailing
+accounts (see the builders).
 
-### PumpSwap event discriminators
+Real mainnet data guards all of this:
 
-PumpSwap's `SwapEvent` / `AddLiquidityEvent` / `RemoveLiquidityEvent` /
-admin-event discriminators were also observed rather than pulled from an
-IDL. The nightly diag's 10% unknown-ratio threshold would catch a wholesale
-discriminator shift (the entire post-graduation stream would start
-decoding as unknown), but a subtle change — e.g. a new admin variant added
-between existing ones — could go unnoticed if the new variant is rare in
-mainnet traffic. **Risk mitigation: refresh the per-variant fixture
-periodically (monthly cadence is sufficient) to catch the long-tail of new
-variants the diag's small sample might miss.**
+- `packages/pumpfun-events/tests/fixtures/pumpfun-per-variant.jsonl.gz` —
+  one real transaction per event variant, decoded in CI
+  (`pnpm capture:pumpfun-per-variant` refreshes it).
+- `packages/pumpfun-protocol/tests/fixtures/pumpfun-instructions.json` — one
+  real instruction per builder; the builders must reproduce each one's
+  accounts, order and writable flags (`pnpm capture:pumpfun-instructions`).
 
-When either of these ships a confirmed layout, the corresponding
-`UnknownEventDecode` `reason` strings should be cleaned up to reference the
-verified source. Until then the diag + fixtures combination is the production
-safety net.
+When pump.fun ships an upgrade: update the IDLs, regenerate, recapture both
+fixtures, and run the tests.
 
 ---
 
@@ -451,9 +455,9 @@ safety net.
   - `packages/pumpfun-protocol/src/routing.ts` — graduation-aware `buy` / `sell`
   - `packages/pumpfun-protocol/src/curve/state.ts` — `curveState` read client
   - `packages/pumpfun-protocol/src/pumpswap/pool-state.ts` — `pumpSwapPoolState`
-  - `packages/pumpfun-protocol/src/instructions/create.ts` — `buildCreate`
-  - `packages/pumpfun-protocol/src/instructions/buy.ts` — `buildBuy`
-  - `packages/pumpfun-protocol/src/instructions/sell.ts` — `buildSell`
-  - `packages/pumpfun-protocol/src/instructions/pumpswap-swap.ts` — `buildPumpSwapSwap`
+  - `packages/pumpfun-events/idl/` — vendored pump.fun IDLs (source of truth)
+  - `packages/pumpfun-protocol/src/instructions/idl-instruction.ts` — IDL-driven account resolution
+  - `packages/pumpfun-protocol/src/instructions/bonding-curve.ts` — `buildCreate` / `buildBuy` / `buildBuyExactSolIn` / `buildSell`
+  - `packages/pumpfun-protocol/src/instructions/pumpswap.ts` — `buildPumpSwapBuy` / `buildPumpSwapBuyExactQuoteIn` / `buildPumpSwapSell`
   - `packages/pumpfun-events/scripts/diag.ts` — nightly diag probe
   - `.github/workflows/ci.yml` — `pumpfun-nightly-diag` job

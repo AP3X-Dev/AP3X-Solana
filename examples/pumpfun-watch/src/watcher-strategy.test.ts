@@ -64,8 +64,8 @@ describe('WatcherStrategy — filters', () => {
       'pumpfun.trade',
       'pumpfun.complete',
       'pumpfun.set_params',
-      'pumpfun.creator_fee',
-      'pumpfun.migrate',
+      'pumpfun.collect_creator_fee',
+      'pumpfun.complete_pump_amm_migration',
       'unknown',
     ];
     for (const kind of kinds) {
@@ -86,7 +86,7 @@ describe('WatcherStrategy — onSignal', () => {
     const emit = vi.fn();
     const s = new WatcherStrategy(undefined, emit);
     const r1 = await s.onSignal(makeSignal(), ctx);
-    const r2 = await s.onSignal(makeSignal({ programId: PS, kind: 'pumpfun.swap' }), ctx);
+    const r2 = await s.onSignal(makeSignal({ programId: PS, kind: 'pumpswap.buy' }), ctx);
     expect(r1).toBeNull();
     expect(r2).toBeNull();
   });
