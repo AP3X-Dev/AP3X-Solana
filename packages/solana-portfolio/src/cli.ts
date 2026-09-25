@@ -17,17 +17,7 @@ async function main(): Promise<void> {
   const basis = BigInt(basisStr!);
 
   const store = new FilePortfolioStore(dir ? { dir } : {});
-  const pos = await store.getPosition(wallet, mint);
-  if (!pos) { console.error('no position'); process.exit(1); }
-  if (lotIdx < 0 || lotIdx >= pos.lots.length) { console.error('lot index out of range'); process.exit(1); }
-  const oldBasis = pos.lots[lotIdx]!.costBasisLamports;
-  pos.lots[lotIdx] = { ...pos.lots[lotIdx]!, costBasisLamports: basis, basisUnresolved: false };
-  await store._upsertForTest(pos);
-  await store._auditForTest(wallet, {
-    ts: Date.now(),
-    event: 'manual-correction',
-    meta: { mint: mint.toBase58(), lotIndex: lotIdx, oldBasis: oldBasis.toString(), newBasis: basis.toString() },
-  });
+  const { oldBasis } = await store.correctLotBasis(wallet, mint, lotIdx, basis);
   console.log(`updated lot ${lotIdx} basis: ${oldBasis} → ${basis}`);
 }
 

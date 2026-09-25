@@ -6,3 +6,12 @@ export type { CostBasisReconstructorOpts, CostBasisReconstructorEvents } from '.
 export { SwapTracerRegistry } from './swap-tracer.js';
 export type { ParsedTransaction, SwapTracer, TraceResult } from './swap-tracer.js';
 export { SplTransferSwapTracer } from './tracers/spl-transfer.js';
+export { Reconciler } from './reconciler.js';
+export type { ReconcilerOpts } from './reconciler.js';
+export { writeDailyClose } from './daily-close.js';
+export type { WriteDailyCloseOpts } from './daily-close.js';
+export { reduceLots, unrealizedPnl, PRICE_SCALE } from './accounting.js';
+export type { AccountingMethod, ReduceResult } from './accounting.js';
+export { fetchTokenBalances } from './token-balances.js';
+export type { FilePortfolioStoreOpts } from './store-file.js';
+export type { TransferBasisResolver } from './reconstructor.js';

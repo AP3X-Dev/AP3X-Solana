@@ -1,60 +1,39 @@
 /**
  * CostBasisReconstructor — cold-start cost-basis reconstruction.
  *
- * Implements the 4-step algorithm from PRP-02 spec Section 3.4:
+ *   1. Walk the wallet's signatures newest-first (paginated) and keep every
+ *      transaction that changed its balance of `mint`. Stop at the one that
+ *      opened the current position (balance went 0 → >0), at the lookback
+ *      cutoff, or when history runs out.
+ *   2. Whatever was held before the oldest walked transaction becomes one
+ *      `cold-start-unresolved` lot (history beyond the walk is unknown).
+ *   3. Replay oldest → newest: inflows add lots (registered swap tracers first,
+ *      then the SOL-outflow heuristic; transfer-ins ask the optional
+ *      `transferBasis` hook), outflows consume lots FIFO — so a buy, sell, buy
+ *      sequence leaves the right lots behind.
+ *   4. Reconcile with `currentBalance` (trim FIFO, or add an unresolved lot)
+ *      and emit `cost-basis-incomplete` whenever any basis is unresolved.
  *
- *   1. Pull recent signatures for the wallet via `getSignaturesForAddress`,
- *      newest-first, capped at `lookbackDays` (default 90).
- *   2. For each signature, fetch the full transaction and identify inflows of
- *      `mint` into `wallet` via pre/post-token balances.
- *   3. Classify each inflow. Registered swap tracers win first; the SOL-outflow
- *      heuristic is the fallback. Accumulate lots newest-first. Stop as soon as
- *      `accounted >= currentBalance`.
- *   4. If the loop exhausts the signature window without covering
- *      `currentBalance`, emit `cost-basis-incomplete` and push one
- *      `cold-start-unresolved` lot for the remainder so downstream accounting
- *      can still reduce against it (with `basisUnresolved: true` surfaced on
- *      any realised PnL event).
- *
- * Design notes:
- *
- *   - RPC response shapes are narrow local interfaces rather than `any`. The
- *     pool returns `unknown`; we cast to these interfaces after the call. They
- *     are deliberately lenient on numeric types — Solana nodes return
- *     lamport balances as JSON numbers, but our test fixtures pass bigints.
- *     `BigInt(…)` normalises both.
- *   - The cutoff check uses `blockTime` (Unix seconds). Signatures without a
- *     `blockTime` (rare, only on historical / pruned entries) are *not*
- *     skipped — we err on the side of walking them rather than silently
- *     truncating.
- *   - `oldestSlotWalked` tracks the oldest slot we actually *fetched* a tx
- *     for. It's zero-filled only when no signature was processed at all (so
- *     the emitted event's slot isn't `Number.MAX_SAFE_INTEGER`).
- *   - Zero / negative token deltas short-circuit — only strict inflows are
- *     candidates for a lot.
+ * RPC shapes are narrow local interfaces; numeric fields accept numbers (real
+ * RPC) or bigints (fixtures). Transactions are fetched as `json` with
+ * `maxSupportedTransactionVersion: 1`, so instruction data is base58 and
+ * address-lookup-table accounts come from `meta.loadedAddresses`.
  */
 
 import { EventEmitter } from 'node:events';
 
-import { PublicKey } from '@ap3x/solana-core';
+import { base58, PublicKey } from '@ap3x/solana-core';
 import type { RpcPool } from '@ap3x/solana-connectivity';
 
+import { reduceLots } from './accounting.js';
 import type { ParsedTransaction, SwapTracerRegistry } from './swap-tracer.js';
 import type { CostBasisIncompleteEvent, Lot } from './types.js';
-
-// ---------------------------------------------------------------------------
-// RPC response shapes
-// ---------------------------------------------------------------------------
-//
-// Narrow interfaces for the two JSON-RPC responses this module consumes. The
-// upstream `RpcPool.call()` returns `unknown`; we cast to these after the
-// call. Fields are typed leniently for numeric values so the same shapes hold
-// for real RPC responses (numbers) and test fixtures (bigints).
 
 interface SignatureEntry {
   signature: string;
   slot: number;
   blockTime: number | null;
+  err?: unknown;
 }
 
 interface TokenBalanceEntry {
@@ -70,62 +49,71 @@ interface RpcInstruction {
   data?: string;
 }
 
-interface RpcTransactionMessage {
-  accountKeys: string[];
-  instructions?: RpcInstruction[];
-}
-
-interface RpcTransactionBody {
-  message: RpcTransactionMessage;
-  signatures?: string[];
-}
-
-interface RpcTransactionMeta {
-  preBalances?: Array<number | bigint>;
-  postBalances?: Array<number | bigint>;
-  fee?: number | bigint;
-  preTokenBalances?: TokenBalanceEntry[];
-  postTokenBalances?: TokenBalanceEntry[];
-  logMessages?: string[];
-}
-
 interface RpcTransaction {
   slot: number;
-  meta: RpcTransactionMeta;
-  transaction: RpcTransactionBody;
+  meta: {
+    err?: unknown;
+    preBalances?: Array<number | bigint>;
+    postBalances?: Array<number | bigint>;
+    fee?: number | bigint;
+    preTokenBalances?: TokenBalanceEntry[];
+    postTokenBalances?: TokenBalanceEntry[];
+    logMessages?: string[];
+    loadedAddresses?: { writable?: string[]; readonly?: string[] };
+  };
+  transaction: {
+    message: { accountKeys: string[]; instructions?: RpcInstruction[] };
+    signatures?: string[];
+  };
 }
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
+/**
+ * Cost basis for tokens that arrived by transfer. Return the basis in
+ * lamports when the source is a tracked wallet (e.g. another vault wallet),
+ * or `undefined` to leave the lot's basis unresolved.
+ */
+export type TransferBasisResolver = (transfer: {
+  source: PublicKey | undefined;
+  mint: PublicKey;
+  amount: bigint;
+  slot: number;
+  signature: string;
+}) => Promise<bigint | undefined> | bigint | undefined;
 
 export interface CostBasisReconstructorOpts {
   rpcPool: RpcPool;
   tracerRegistry: SwapTracerRegistry;
   lookbackDays?: number;
+  transferBasis?: TransferBasisResolver;
 }
 
 export interface CostBasisReconstructorEvents {
   'cost-basis-incomplete': (event: CostBasisIncompleteEvent) => void;
 }
 
-// ---------------------------------------------------------------------------
-// CostBasisReconstructor
-// ---------------------------------------------------------------------------
-
 const DEFAULT_LOOKBACK_DAYS = 90;
-const DEFAULT_SIG_PAGE_SIZE = 1000;
+const SIG_PAGE_SIZE = 1000;
+
+interface BalanceChange {
+  signature: string;
+  slot: number;
+  tx: RpcTransaction;
+  pre: bigint;
+  post: bigint;
+}
 
 export class CostBasisReconstructor extends EventEmitter {
   readonly #rpcPool: RpcPool;
   readonly #tracerRegistry: SwapTracerRegistry;
   readonly #lookbackDays: number;
+  readonly #transferBasis: TransferBasisResolver | undefined;
 
   constructor(opts: CostBasisReconstructorOpts) {
     super();
     this.#rpcPool = opts.rpcPool;
     this.#tracerRegistry = opts.tracerRegistry;
     this.#lookbackDays = opts.lookbackDays ?? DEFAULT_LOOKBACK_DAYS;
+    this.#transferBasis = opts.transferBasis;
   }
 
   override on<E extends keyof CostBasisReconstructorEvents>(
@@ -138,196 +126,228 @@ export class CostBasisReconstructor extends EventEmitter {
     return super.on(event, handler);
   }
 
-  async reconstruct(
-    wallet: PublicKey,
-    mint: PublicKey,
-    currentBalance: bigint,
-  ): Promise<Lot[]> {
-    const lookbackMs = this.#lookbackDays * 24 * 60 * 60 * 1000;
-    const cutoffSec = (Date.now() - lookbackMs) / 1000;
+  /** `lookbackDays` overrides the constructor's lookback for this call. */
+  async reconstruct(wallet: PublicKey, mint: PublicKey, currentBalance: bigint, lookbackDays?: number): Promise<Lot[]> {
+    const { changes, oldestSlotWalked } = await this.#walk(wallet, mint, lookbackDays ?? this.#lookbackDays);
+    const now = Date.now();
+    const unresolved = (amount: bigint, slot: number): Lot => ({
+      amount,
+      costBasisLamports: 0n,
+      acquiredSlot: slot,
+      acquiredSig: '',
+      source: 'cold-start-unresolved',
+      basisUnresolved: true,
+      reconstructedAt: now,
+    });
 
-    const sigs = (await this.#rpcPool.call('getSignaturesForAddress', [
-      wallet.toBase58(),
-      { limit: DEFAULT_SIG_PAGE_SIZE },
-    ])) as SignatureEntry[] | null;
-
-    const lots: Lot[] = [];
-    let accounted = 0n;
-    let oldestSlotWalked = Number.MAX_SAFE_INTEGER;
-
-    for (const sigInfo of sigs ?? []) {
-      if (sigInfo.blockTime !== null && sigInfo.blockTime < cutoffSec) break;
-      if (accounted >= currentBalance) break;
-
-      const tx = (await this.#rpcPool.call('getTransaction', [
-        sigInfo.signature,
-        { maxSupportedTransactionVersion: 0, encoding: 'json' },
-      ])) as RpcTransaction | null;
-      if (!tx) continue;
-      oldestSlotWalked = Math.min(oldestSlotWalked, sigInfo.slot);
-
-      const lot = this.#classifyLotForTx(tx, wallet, mint, sigInfo.signature, sigInfo.slot);
-      if (!lot) continue;
-      if (lot.amount > 0n) {
-        lots.push(lot);
-        accounted += lot.amount;
+    // Replay oldest → newest, starting from whatever was held before the walk.
+    const ordered = [...changes].reverse();
+    const opening = ordered[0]?.pre ?? 0n;
+    let lots: Lot[] = opening > 0n ? [unresolved(opening, oldestSlotWalked)] : [];
+    for (const c of ordered) {
+      const delta = c.post - c.pre;
+      if (delta > 0n) {
+        lots.push(await this.#classifyInflow(c, wallet, mint, delta, now));
+      } else {
+        const held = lots.reduce((s, l) => s + l.amount, 0n);
+        const out = -delta < held ? -delta : held;
+        lots = reduceLots(lots, out, 0n, 'fifo').remaining;
       }
     }
 
-    if (accounted < currentBalance) {
-      const unaccounted = currentBalance - accounted;
-      lots.push({
-        amount: unaccounted,
-        costBasisLamports: 0n,
-        acquiredSlot: oldestSlotWalked === Number.MAX_SAFE_INTEGER ? 0 : oldestSlotWalked,
-        acquiredSig: '',
-        source: 'cold-start-unresolved',
-        basisUnresolved: true,
-        reconstructedAt: Date.now(),
-      });
-      const event: CostBasisIncompleteEvent = {
-        wallet,
-        mint,
-        unaccountedAmount: unaccounted,
-        oldestSlotWalked:
-          oldestSlotWalked === Number.MAX_SAFE_INTEGER ? 0 : oldestSlotWalked,
-      };
-      this.emit('cost-basis-incomplete', event);
+    // Reconcile with the live balance.
+    const total = lots.reduce((s, l) => s + l.amount, 0n);
+    if (total > currentBalance) {
+      lots = reduceLots(lots, total - currentBalance, 0n, 'fifo').remaining;
+    } else if (total < currentBalance) {
+      lots.push(unresolved(currentBalance - total, oldestSlotWalked));
     }
 
+    const unaccountedAmount = lots.filter((l) => l.basisUnresolved).reduce((s, l) => s + l.amount, 0n);
+    if (unaccountedAmount > 0n) {
+      const event: CostBasisIncompleteEvent = { wallet, mint, unaccountedAmount, oldestSlotWalked };
+      this.emit('cost-basis-incomplete', event);
+    }
     return lots;
+  }
+
+  // -------------------------------------------------------------------------
+  // History walk
+  // -------------------------------------------------------------------------
+
+  async #walk(
+    wallet: PublicKey,
+    mint: PublicKey,
+    lookbackDays: number,
+  ): Promise<{ changes: BalanceChange[]; oldestSlotWalked: number }> {
+    const cutoffSec = (Date.now() - lookbackDays * 24 * 60 * 60 * 1000) / 1000;
+    const changes: BalanceChange[] = [];
+    const seen = new Set<string>();
+    let oldestSlotWalked = 0;
+    let before: string | undefined;
+
+    for (;;) {
+      const page = ((await this.#rpcPool.call('getSignaturesForAddress', [
+        wallet.toBase58(),
+        { limit: SIG_PAGE_SIZE, ...(before ? { before } : {}) },
+      ])) ?? []) as SignatureEntry[];
+      const fresh = page.filter((s) => !seen.has(s.signature));
+      if (fresh.length === 0) break;
+
+      for (const sigInfo of fresh) {
+        seen.add(sigInfo.signature);
+        if (sigInfo.blockTime !== null && sigInfo.blockTime < cutoffSec) {
+          return { changes, oldestSlotWalked };
+        }
+        if (sigInfo.err) continue;
+        const tx = (await this.#rpcPool.call('getTransaction', [
+          sigInfo.signature,
+          { maxSupportedTransactionVersion: 1, encoding: 'json' },
+        ])) as RpcTransaction | null;
+        if (!tx || tx.meta?.err) continue;
+        oldestSlotWalked = sigInfo.slot;
+
+        const pre = ownedAmount(tx.meta.preTokenBalances, wallet, mint);
+        const post = ownedAmount(tx.meta.postTokenBalances, wallet, mint);
+        if (pre === post) continue;
+        changes.push({ signature: sigInfo.signature, slot: sigInfo.slot, tx, pre, post });
+        // The transaction that opened the current position: nothing before it
+        // affects today's lots.
+        if (pre === 0n) return { changes, oldestSlotWalked };
+      }
+
+      if (page.length < SIG_PAGE_SIZE) break;
+      before = page[page.length - 1]!.signature;
+    }
+    return { changes, oldestSlotWalked };
   }
 
   // -------------------------------------------------------------------------
   // Classification
   // -------------------------------------------------------------------------
 
-  #classifyLotForTx(
-    tx: RpcTransaction,
-    wallet: PublicKey,
-    mint: PublicKey,
-    sig: string,
-    slot: number,
-  ): Lot | null {
-    const walletStr = wallet.toBase58();
-    const mintStr = mint.toBase58();
+  async #classifyInflow(c: BalanceChange, wallet: PublicKey, mint: PublicKey, delta: bigint, now: number): Promise<Lot> {
+    const base = { amount: delta, acquiredSlot: c.slot, acquiredSig: c.signature, reconstructedAt: now };
 
-    const pre = (tx.meta.preTokenBalances ?? []).find(
-      (b) => b.owner === walletStr && b.mint === mintStr,
-    );
-    const post = (tx.meta.postTokenBalances ?? []).find(
-      (b) => b.owner === walletStr && b.mint === mintStr,
-    );
-    const preAmt = pre?.uiTokenAmount?.amount ? BigInt(pre.uiTokenAmount.amount) : 0n;
-    const postAmt = post?.uiTokenAmount?.amount ? BigInt(post.uiTokenAmount.amount) : 0n;
-    const delta = postAmt - preAmt;
-    if (delta <= 0n) return null;
-
-    // Try registered tracers first. Tracers have richer knowledge (e.g. a
-    // pump.fun decoder can pull the exact lamport outflow from log events)
-    // than the SOL-outflow heuristic, so they always win when they match.
-    const parsedTx = this.#toParsedTransaction(tx, sig, slot);
+    // Registered tracers know more (e.g. exact lamports from a program's
+    // events) than the SOL-outflow heuristic, so they win when they match.
+    const parsedTx = toParsedTransaction(c.tx, c.signature, c.slot);
     for (const programId of parsedTx.programIds) {
       for (const tracer of this.#tracerRegistry.tracersFor(programId)) {
         const result = tracer.trace(parsedTx, wallet, mint);
         if (!result) continue;
         if (result.kind === 'swap') {
-          return {
-            amount: result.tokensIn,
-            costBasisLamports: result.solOut,
-            acquiredSlot: slot,
-            acquiredSig: sig,
-            source: 'cold-start-reconstructed',
-            reconstructedAt: Date.now(),
-          };
+          return { ...base, amount: result.tokensIn, costBasisLamports: result.solOut, source: 'cold-start-reconstructed' };
         }
-        if (result.kind === 'transfer-in') {
-          return {
-            amount: delta,
-            costBasisLamports: 0n,
-            acquiredSlot: slot,
-            acquiredSig: sig,
-            source: 'transfer-in',
-            reconstructedAt: Date.now(),
-          };
-        }
+        return this.#transferIn(base, result.sourceWallet ?? transferSource(c.tx, wallet, mint), mint);
       }
     }
 
-    // Fallback: SOL-outflow heuristic. If the fee payer sent SOL in this tx
-    // beyond what the network fee accounts for, treat that outflow as the
-    // lot's cost basis. This covers AMM swaps we don't have a decoder for.
-    const accountIdx = tx.transaction.message.accountKeys.indexOf(walletStr);
-    const fee = BigInt(tx.meta.fee ?? 0);
-    let solOutflow = 0n;
-    if (accountIdx >= 0) {
-      const preBal = tx.meta.preBalances?.[accountIdx];
-      const postBal = tx.meta.postBalances?.[accountIdx];
-      if (preBal !== undefined && postBal !== undefined) {
-        const before = BigInt(preBal);
-        const after = BigInt(postBal);
-        solOutflow = before - after - fee;
-        if (solOutflow < 0n) solOutflow = 0n;
-      }
-    }
+    // Fallback: SOL the wallet spent beyond the network fee is the cost.
+    const keys = accountKeys(c.tx);
+    const idx = keys.indexOf(wallet.toBase58());
+    const preBal = c.tx.meta.preBalances?.[idx];
+    const postBal = c.tx.meta.postBalances?.[idx];
+    const solOut =
+      idx >= 0 && preBal !== undefined && postBal !== undefined
+        ? BigInt(preBal) - BigInt(postBal) - (idx === 0 ? BigInt(c.tx.meta.fee ?? 0) : 0n)
+        : 0n;
+    if (solOut > 0n) return { ...base, costBasisLamports: solOut, source: 'cold-start-reconstructed' };
 
-    if (solOutflow > 0n) {
-      return {
-        amount: delta,
-        costBasisLamports: solOutflow,
-        acquiredSlot: slot,
-        acquiredSig: sig,
-        source: 'cold-start-reconstructed',
-        reconstructedAt: Date.now(),
-      };
-    }
+    // Tokens arrived from another holder with no SOL leaving: a transfer.
+    const source = transferSource(c.tx, wallet, mint);
+    if (source) return this.#transferIn(base, source, mint);
 
-    // No SOL outflow and no tracer match → airdrop / claim / reward.
-    return {
-      amount: delta,
-      costBasisLamports: 0n,
-      acquiredSlot: slot,
-      acquiredSig: sig,
-      source: 'airdrop',
-      reconstructedAt: Date.now(),
-    };
+    // No SOL out and no sender: airdrop / claim / reward.
+    return { ...base, costBasisLamports: 0n, source: 'airdrop' };
   }
 
-  // -------------------------------------------------------------------------
-  // RPC → ParsedTransaction adapter
-  // -------------------------------------------------------------------------
-
-  #toParsedTransaction(tx: RpcTransaction, sig: string, slot: number): ParsedTransaction {
-    const accounts = tx.transaction.message.accountKeys.map((k) => PublicKey.fromBase58(k));
-    const fallbackProgram = PublicKey.fromBase58('11111111111111111111111111111111');
-
-    const ixs = (tx.transaction.message.instructions ?? []).map((ix) => {
-      const programId = accounts[ix.programIdIndex] ?? fallbackProgram;
-      const ixAccounts = (ix.accounts ?? []).map((idx) => accounts[idx] ?? fallbackProgram);
-      const data =
-        ix.data !== undefined && ix.data !== ''
-          ? new Uint8Array(Buffer.from(ix.data, 'base64'))
-          : new Uint8Array();
-      return { programId, accounts: ixAccounts, data };
+  async #transferIn(
+    base: { amount: bigint; acquiredSlot: number; acquiredSig: string; reconstructedAt: number },
+    source: PublicKey | undefined,
+    mint: PublicKey,
+  ): Promise<Lot> {
+    const basis = await this.#transferBasis?.({
+      source,
+      mint,
+      amount: base.amount,
+      slot: base.acquiredSlot,
+      signature: base.acquiredSig,
     });
+    return basis === undefined
+      ? { ...base, costBasisLamports: 0n, source: 'transfer-in', basisUnresolved: true }
+      : { ...base, costBasisLamports: basis, source: 'transfer-in' };
+  }
+}
 
-    const uniqueProgramIds = Array.from(new Set(ixs.map((i) => i.programId.toBase58()))).map(
-      (b58) => PublicKey.fromBase58(b58),
+// ---------------------------------------------------------------------------
+// RPC transaction helpers
+// ---------------------------------------------------------------------------
+
+/** Static keys followed by address-lookup-table keys (writable, then readonly). */
+function accountKeys(tx: RpcTransaction): string[] {
+  const loaded = tx.meta.loadedAddresses;
+  return [...tx.transaction.message.accountKeys, ...(loaded?.writable ?? []), ...(loaded?.readonly ?? [])];
+}
+
+/** Sum of `owner`'s balances of `mint` across all its token accounts. */
+function ownedAmount(entries: TokenBalanceEntry[] | undefined, owner: PublicKey, mint: PublicKey): bigint {
+  const o = owner.toBase58();
+  const m = mint.toBase58();
+  return (entries ?? [])
+    .filter((b) => b.owner === o && b.mint === m)
+    .reduce((s, b) => s + BigInt(b.uiTokenAmount?.amount ?? '0'), 0n);
+}
+
+/** The other owner whose balance of `mint` fell the most in this transaction. */
+function transferSource(tx: RpcTransaction, wallet: PublicKey, mint: PublicKey): PublicKey | undefined {
+  const m = mint.toBase58();
+  const owners = new Set(
+    [...(tx.meta.preTokenBalances ?? []), ...(tx.meta.postTokenBalances ?? [])]
+      .filter((b) => b.mint === m && b.owner && b.owner !== wallet.toBase58())
+      .map((b) => b.owner!),
+  );
+  let best: { owner: string; drop: bigint } | undefined;
+  for (const owner of owners) {
+    const pk = PublicKey.fromBase58(owner);
+    const drop = ownedAmount(tx.meta.preTokenBalances, pk, mint) - ownedAmount(tx.meta.postTokenBalances, pk, mint);
+    if (drop > 0n && (!best || drop > best.drop)) best = { owner, drop };
+  }
+  return best ? PublicKey.fromBase58(best.owner) : undefined;
+}
+
+function toParsedTransaction(tx: RpcTransaction, sig: string, slot: number): ParsedTransaction {
+  const keys = accountKeys(tx);
+  const accounts = keys.map((k) => PublicKey.fromBase58(k));
+  const ixs = (tx.transaction.message.instructions ?? []).flatMap((ix) => {
+    const programId = accounts[ix.programIdIndex];
+    if (!programId) return [];
+    const ixAccounts = (ix.accounts ?? []).flatMap((i) => (accounts[i] ? [accounts[i]!] : []));
+    return [{ programId, accounts: ixAccounts, data: ix.data ? base58.decode(ix.data) : new Uint8Array() }];
+  });
+  const programIds = [...new Set(ixs.map((i) => i.programId.toBase58()))].map((b) => PublicKey.fromBase58(b));
+
+  const lamports = (arr: Array<number | bigint> | undefined) =>
+    new Map((arr ?? []).map((v, i) => [keys[i] ?? String(i), BigInt(v)] as const));
+  const tokens = (arr: TokenBalanceEntry[] | undefined) =>
+    (arr ?? []).flatMap((b) =>
+      b.owner && b.mint
+        ? [{ owner: PublicKey.fromBase58(b.owner), mint: PublicKey.fromBase58(b.mint), amount: BigInt(b.uiTokenAmount?.amount ?? '0') }]
+        : [],
     );
 
-    return {
-      signature: sig,
-      slot,
-      programIds: uniqueProgramIds,
-      meta: {
-        preBalances: new Map(),
-        postBalances: new Map(),
-        preTokenBalances: [],
-        postTokenBalances: [],
-        feeLamports: BigInt(tx.meta.fee ?? 0),
-        logMessages: tx.meta.logMessages ?? [],
-      },
-      instructions: ixs,
-    };
-  }
+  return {
+    signature: sig,
+    slot,
+    programIds,
+    meta: {
+      preBalances: lamports(tx.meta.preBalances),
+      postBalances: lamports(tx.meta.postBalances),
+      preTokenBalances: tokens(tx.meta.preTokenBalances),
+      postTokenBalances: tokens(tx.meta.postTokenBalances),
+      feeLamports: BigInt(tx.meta.fee ?? 0),
+      logMessages: tx.meta.logMessages ?? [],
+    },
+    instructions: ixs,
+  };
 }

@@ -23,39 +23,11 @@
  *     so callers (and tests) can drive reconciliation manually without a timer.
  */
 
-import { PublicKey } from '@ap3x/solana-core';
+import type { PublicKey } from '@ap3x/solana-core';
 import type { RpcPool } from '@ap3x/solana-connectivity';
 
+import { fetchTokenBalances } from './token-balances.js';
 import type { DriftEvent, Lot, Position } from './types.js';
-
-// ---------------------------------------------------------------------------
-// RPC response shapes — narrow interfaces, no `any`
-// ---------------------------------------------------------------------------
-
-interface TokenAmountInfo {
-  amount: string;
-}
-
-interface ParsedTokenInfo {
-  mint: string;
-  tokenAmount: TokenAmountInfo;
-}
-
-interface ParsedAccountData {
-  parsed: {
-    info: ParsedTokenInfo;
-  };
-}
-
-interface ParsedTokenAccount {
-  account: {
-    data: ParsedAccountData;
-  };
-}
-
-interface GetTokenAccountsByOwnerResult {
-  value: ParsedTokenAccount[];
-}
 
 // ---------------------------------------------------------------------------
 // Minimal store interface — only what Reconciler touches
@@ -63,6 +35,8 @@ interface GetTokenAccountsByOwnerResult {
 
 interface PortfolioStoreMinimal {
   getAllPositions(wallet: PublicKey): Promise<Position[]>;
+  /** Present on stores that can re-run cost-basis reconstruction. */
+  rebuildPosition?(wallet: PublicKey, mint: PublicKey, observedBalance: bigint): Promise<unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,13 +49,12 @@ export interface ReconcilerOpts {
   walletAddresses: PublicKey[];
   intervalMs?: number;
   onDrift?: (e: DriftEvent) => void;
+  /**
+   * Rebuild a drifted position from on-chain history (default true when the
+   * store supports `rebuildPosition`).
+   */
+  rebuildOnDrift?: boolean;
 }
-
-// ---------------------------------------------------------------------------
-// SPL Token program ID (mainnet-beta, devnet, testnet)
-// ---------------------------------------------------------------------------
-
-const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 
 // ---------------------------------------------------------------------------
 // Reconciler
@@ -93,6 +66,7 @@ export class Reconciler {
   readonly #walletAddresses: PublicKey[];
   readonly #intervalMs: number;
   readonly #onDrift: ((e: DriftEvent) => void) | undefined;
+  readonly #rebuildOnDrift: boolean;
   #timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(opts: ReconcilerOpts) {
@@ -101,6 +75,7 @@ export class Reconciler {
     this.#walletAddresses = opts.walletAddresses;
     this.#intervalMs = opts.intervalMs ?? 60_000;
     this.#onDrift = opts.onDrift;
+    this.#rebuildOnDrift = opts.rebuildOnDrift ?? true;
   }
 
   /** Start the periodic reconciliation timer. */
@@ -132,21 +107,7 @@ export class Reconciler {
   async #reconcileWallet(wallet: PublicKey): Promise<void> {
     const positions = await this.#store.getAllPositions(wallet);
 
-    const raw = await this.#rpcPool.call('getTokenAccountsByOwner', [
-      wallet.toBase58(),
-      { programId: TOKEN_PROGRAM_ID },
-      { encoding: 'jsonParsed' },
-    ]);
-
-    const result = raw as GetTokenAccountsByOwnerResult;
-    const onChainByMint = new Map<string, bigint>();
-
-    for (const acc of result.value) {
-      const info = acc.account.data.parsed.info;
-      const amount = BigInt(info.tokenAmount.amount);
-      const prev = onChainByMint.get(info.mint) ?? 0n;
-      onChainByMint.set(info.mint, prev + amount);
-    }
+    const onChainByMint = await fetchTokenBalances(this.#rpcPool, wallet);
 
     for (const pos of positions) {
       const expected = sumLots(pos.lots);
@@ -161,6 +122,9 @@ export class Reconciler {
           lastKnownLandedSig: lastSig(pos.lots),
         };
         this.#onDrift?.(event);
+        if (this.#rebuildOnDrift && this.#store.rebuildPosition) {
+          await this.#store.rebuildPosition(wallet, pos.mint, observed);
+        }
       }
     }
   }

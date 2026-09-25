@@ -33,6 +33,7 @@ import type { Signal } from '@ap3x/solana-signals';
 import { SignalQueue } from '@ap3x/solana-signals';
 import type { FixtureSignalSource } from '@ap3x/solana-signals';
 import type { TradeIntent, ExecutionResult } from '@ap3x/solana-executor';
+import { reduceLots, unrealizedPnl } from '@ap3x/solana-portfolio';
 import type { LandedTrade, Position, PositionChange } from '@ap3x/solana-portfolio';
 import type { WalletHandle } from '@ap3x/solana-vault';
 
@@ -140,7 +141,7 @@ class InMemoryStrategyStateStore implements StrategyStateStore {
 class InMemoryPortfolio extends EventEmitter implements PortfolioLike {
   // wallet-base58 → mint-base58 → Position
   private readonly positions = new Map<string, Map<string, Position>>();
-  // wallet-base58 → realized PnL
+  // `${wallet}:${mint}` (base58) → realized PnL
   private readonly realizedPnl = new Map<string, bigint>();
 
   async getPosition(wallet: PublicKey, mint: PublicKey): Promise<Position | null> {
@@ -152,16 +153,13 @@ class InMemoryPortfolio extends EventEmitter implements PortfolioLike {
     return byMint ? [...byMint.values()] : [];
   }
 
-  async getRealizedPnl(wallet: PublicKey, _mint: PublicKey): Promise<bigint> {
-    return this.realizedPnl.get(wallet.toBase58()) ?? 0n;
+  async getRealizedPnl(wallet: PublicKey, mint: PublicKey): Promise<bigint> {
+    return this.realizedPnl.get(`${wallet.toBase58()}:${mint.toBase58()}`) ?? 0n;
   }
 
-  async getUnrealizedPnl(
-    _wallet: PublicKey,
-    _mint: PublicKey,
-    _currentPriceLamports: bigint,
-  ): Promise<bigint> {
-    return 0n;
+  async getUnrealizedPnl(wallet: PublicKey, mint: PublicKey, currentPriceLamports: bigint): Promise<bigint> {
+    const pos = await this.getPosition(wallet, mint);
+    return pos ? unrealizedPnl(pos.lots, currentPriceLamports) : 0n;
   }
 
   async applyLandedTrade(trade: LandedTrade): Promise<PositionChange[]> {
@@ -198,14 +196,18 @@ class InMemoryPortfolio extends EventEmitter implements PortfolioLike {
       };
       pos = { ...pos, lots: [...pos.lots, lot], lastUpdatedSlot: trade.slot };
     } else if (trade.amountDelta < 0n) {
-      // Inline FIFO lot reduction (mirrors FilePortfolioStore)
-      const { remaining, realized } = inlineReduceLotsFifo(
+      // FIFO, as FilePortfolioStore does by default. A simulated sell can
+      // exceed inventory; reduce what is held.
+      const held = pos.lots.reduce((s, l) => s + l.amount, 0n);
+      const sold = -trade.amountDelta < held ? -trade.amountDelta : held;
+      const { remaining, realized } = reduceLots(
         pos.lots,
-        -trade.amountDelta,
+        sold,
         trade.solFlowLamports > 0n ? trade.solFlowLamports : 0n,
+        'fifo',
       );
-      const prev = this.realizedPnl.get(walletStr) ?? 0n;
-      this.realizedPnl.set(walletStr, prev + realized);
+      const key = `${walletStr}:${mintStr}`;
+      this.realizedPnl.set(key, (this.realizedPnl.get(key) ?? 0n) + realized);
       pos = { ...pos, lots: remaining, lastUpdatedSlot: trade.slot };
       this.emit('realized-pnl', {
         wallet: trade.wallet,
@@ -243,44 +245,6 @@ class InMemoryPortfolio extends EventEmitter implements PortfolioLike {
     }
     return out;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Inline FIFO lot reduction (mirrors accounting.ts without importing it)
-// ---------------------------------------------------------------------------
-
-function inlineReduceLotsFifo(
-  lots: Position['lots'],
-  amount: bigint,
-  proceedsLamports: bigint,
-): { remaining: Position['lots']; realized: bigint } {
-  if (amount <= 0n) return { remaining: lots, realized: 0n };
-
-  let toTake = amount;
-  let costBasis = 0n;
-  let allocatedProceeds = 0n;
-  const out: Position['lots'] = [];
-
-  for (const l of lots) {
-    if (toTake === 0n) { out.push(l); continue; }
-    const tokensTaken = l.amount <= toTake ? l.amount : toTake;
-    const partialBasis = (l.costBasisLamports * tokensTaken) / l.amount;
-    const denom = l.amount > amount ? l.amount : amount;
-    const lotProceeds = (proceedsLamports * tokensTaken) / denom;
-    costBasis += partialBasis;
-    allocatedProceeds += lotProceeds;
-    toTake -= tokensTaken;
-    if (tokensTaken < l.amount) {
-      out.push({
-        ...l,
-        amount: l.amount - tokensTaken,
-        costBasisLamports: l.costBasisLamports - partialBasis,
-      });
-    }
-  }
-
-  // If we couldn't reduce fully (short inventory), just clear what we could
-  return { remaining: out, realized: allocatedProceeds - costBasis };
 }
 
 // ---------------------------------------------------------------------------

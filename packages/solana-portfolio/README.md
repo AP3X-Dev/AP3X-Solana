@@ -14,9 +14,25 @@ Position tracking and cost-basis accounting for the AP3X Solana runtime.
 - `PositionChange` — before/after snapshot emitted whenever a position mutates
 - `RealizedPnlEvent`, `DriftEvent`, `CostBasisIncompleteEvent` — diagnostic events for downstream consumers
 
-## Cost-basis methods
+## Tracking a wallet
 
-`ObserveOpts.method` selects `fifo` (default), `lifo`, or `avg-cost`.
+`FilePortfolioStore.observe(wallet, { method, lookbackDays })` starts tracking:
+every token the wallet holds (SPL Token and Token-2022) that has no position
+yet is cold-started once from on-chain history by `CostBasisReconstructor`,
+which replays buys and sells since the position was opened. `method` selects
+`fifo` (default), `lifo` or `avg-cost` for later sells in that wallet.
+Transfer-ins take their basis from the optional `transferBasis` hook, or are
+marked `basisUnresolved`.
+
+`Reconciler` compares stored positions with on-chain balances on an interval,
+emits drift events, and rebuilds drifted positions via `rebuildPosition`.
+
+## PnL
+
+- `getRealizedPnl(wallet, mint)` — realized PnL for that mint, in lamports.
+- `getUnrealizedPnl(wallet, mint, currentPriceLamports)` — open lots marked to
+  `currentPriceLamports`, which is lamports per token base unit × `PRICE_SCALE`
+  (1e9, the same convention as the pump.fun price helpers).
 
 ## Boundary
 

@@ -146,3 +146,22 @@ export function reduceLots(
     basisUnresolved,
   };
 }
+
+/**
+ * Scale of `currentPriceLamports` in {@link unrealizedPnl}: lamports per token
+ * base unit × 1e9 — the same convention as the pump.fun price helpers
+ * (`priceFromReserves`, `ammPrice`).
+ */
+export const PRICE_SCALE = 1_000_000_000n;
+
+/**
+ * Mark-to-market PnL of open lots in lamports: value at `currentPriceLamports`
+ * (see {@link PRICE_SCALE}) minus remaining cost basis. Lots with unresolved
+ * basis count at their recorded basis (usually 0), so treat the result as
+ * provisional when any lot has `basisUnresolved`.
+ */
+export function unrealizedPnl(lots: Lot[], currentPriceLamports: bigint): bigint {
+  const amount = lots.reduce((s, l) => s + l.amount, 0n);
+  const basis = lots.reduce((s, l) => s + l.costBasisLamports, 0n);
+  return (amount * currentPriceLamports) / PRICE_SCALE - basis;
+}
