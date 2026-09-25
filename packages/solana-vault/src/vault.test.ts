@@ -417,7 +417,7 @@ describe('Vault — SOL reserve guard integration', () => {
     vault.lockAll();
   });
 
-  it('unlock without getBalance/estimateDelta disables the guard even if reserve is set', async () => {
+  it('unlock refuses a reserved role without getBalance/estimateDelta', async () => {
     const storage = new FileVaultStorage({ baseDir });
     const vault = new Vault({
       storage,
@@ -426,11 +426,11 @@ describe('Vault — SOL reserve guard integration', () => {
     });
     const seed = randomSeed();
     await vault.addWallet('main', 'trader', seed, STRONG_PASSPHRASE);
-    // No reserve hooks passed — guard silently no-ops because we cannot check.
-    const handle = await vault.unlock('main', STRONG_PASSPHRASE);
-    const tx = new Uint8Array(1 + 64 + 4);
-    tx[0] = 1;
-    await expect(handle.signTransaction(tx)).resolves.toBeDefined();
+    // A reserve that cannot be checked must not be skipped.
+    await expect(vault.unlock('main', STRONG_PASSPHRASE)).rejects.toThrow(/SOL reserve/);
+    await expect(
+      vault.unlock('main', STRONG_PASSPHRASE, { getBalance: async () => 1n }),
+    ).rejects.toThrow(/SOL reserve/);
     vault.lockAll();
   });
 });

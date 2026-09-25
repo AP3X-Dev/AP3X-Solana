@@ -45,9 +45,9 @@ export type SignAuditHook = (
 ) => Promise<void> | void;
 
 /**
- * Per-wallet reserve guard configuration. All three fields are required to
- * enable the guard — if any are undefined the guard silently no-ops, which
- * is the graceful default for wallets without reserve policy.
+ * Per-wallet reserve guard configuration. Without `reserveLamports` there is
+ * no reserve policy. With it, both `getBalance` and `estimateDelta` are
+ * required: a wallet with a reserve but no way to check it refuses to sign.
  *
  * Injected at unlock time by `Vault.unlock(name, pp, { getBalance, estimateDelta })`.
  * The Vault resolves `reserveLamports` from `solReserveByRole[record.role]`.
@@ -212,15 +212,14 @@ export class WalletHandle {
     }
 
     // Reserve guard — checked BEFORE signing so a breach never emits a sig.
-    // All three hooks must be present; any absence disables the guard. This
-    // matches the "graceful default" contract: the Vault may choose not to
-    // configure reserve policy for every role.
+    // A reserve without the hooks to check it fails closed.
     const { reserveLamports, getBalance, estimateDelta } = this.#reserve;
-    if (
-      reserveLamports !== undefined &&
-      getBalance !== undefined &&
-      estimateDelta !== undefined
-    ) {
+    if (reserveLamports !== undefined) {
+      if (getBalance === undefined || estimateDelta === undefined) {
+        throw new Error(
+          `vault: wallet role '${this.role}' has a SOL reserve but no getBalance/estimateDelta to enforce it`,
+        );
+      }
       const currentBalance = await getBalance();
       const txEstimatedDelta = estimateDelta(tx);
       const result = checkSpend({

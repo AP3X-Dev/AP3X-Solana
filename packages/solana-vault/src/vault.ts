@@ -251,11 +251,12 @@ export class Vault {
    * call and the Map never double-counts.
    *
    * **T12 SOL reserve guard wiring.** If the wallet's `role` appears in the
-   * Vault's `solReserveByRole` map AND the caller supplies both `getBalance`
-   * and `estimateDelta` in `options`, those three values are wired into the
-   * returned handle and `signTransaction` will enforce the reserve floor. If
-   * any of the three is missing the guard silently no-ops, which is the
-   * documented graceful default — operators opt in per-role.
+   * Vault's `solReserveByRole` map, the caller must supply both
+   * `getBalance` and `estimateDelta` in `options`; they are wired into the
+   * returned handle and `signTransaction` enforces the reserve floor. Unlock
+   * throws when a reserved role is unlocked without them, so a configured
+   * reserve can never be silently skipped. Roles without a reserve need no
+   * hooks.
    */
   async unlock(
     name: string,
@@ -296,6 +297,12 @@ export class Vault {
     const address = PublicKey.fromBase58(record.address);
     const storage = this.#storage;
     const reserveLamports = this.#solReserveByRole[record.role];
+    if (reserveLamports !== undefined && (!options?.getBalance || !options?.estimateDelta)) {
+      secretKey.fill(0);
+      throw new Error(
+        `vault: role '${record.role}' has a SOL reserve; unlock needs getBalance and estimateDelta to enforce it`,
+      );
+    }
     const handle = new WalletHandle(
       record.role,
       address,
@@ -304,10 +311,8 @@ export class Vault {
         await logAudit(storage, name, event, metadata);
       },
       {
-        // Only populate `reserveLamports` when a policy exists for this role.
-        // The handle already silently no-ops when any of the three hooks is
-        // undefined; leaving `reserveLamports` unset here is equivalent to
-        // "no reserve policy for this wallet."
+        // Only populate `reserveLamports` when a policy exists for this role;
+        // leaving it unset means "no reserve policy for this wallet".
         ...(reserveLamports !== undefined ? { reserveLamports } : {}),
         ...(options?.getBalance !== undefined
           ? { getBalance: options.getBalance }

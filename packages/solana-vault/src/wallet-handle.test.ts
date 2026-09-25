@@ -263,22 +263,23 @@ describe('WalletHandle — SOL reserve guard', () => {
     expect(signed[0]).toBe(1);
   });
 
-  it('skips guard when reserveLamports is set but getBalance is missing', async () => {
-    // We cannot project without a balance source, so with no getBalance the
-    // guard silently no-ops. This is the graceful default.
-    const h = new WalletHandle('trader', address, seed, undefined, {
+  it('refuses to sign when reserveLamports is set but getBalance is missing', async () => {
+    // A reserve that cannot be checked must not be silently skipped.
+    const hook = vi.fn();
+    const h = new WalletHandle('trader', address, seed, hook, {
       reserveLamports: 999_999_999_999n,
       estimateDelta: () => -1n,
     });
-    await expect(h.signTransaction(makeTx())).resolves.toBeDefined();
+    await expect(h.signTransaction(makeTx())).rejects.toThrow(/SOL reserve/);
+    expect(hook).not.toHaveBeenCalled();
   });
 
-  it('skips guard when reserveLamports is set but estimateDelta is missing', async () => {
+  it('refuses to sign when reserveLamports is set but estimateDelta is missing', async () => {
     const h = new WalletHandle('trader', address, seed, undefined, {
       reserveLamports: 999_999_999_999n,
       getBalance: async () => 0n,
     });
-    await expect(h.signTransaction(makeTx())).resolves.toBeDefined();
+    await expect(h.signTransaction(makeTx())).rejects.toThrow(/SOL reserve/);
   });
 
   it('checks reserve BEFORE signing so breaches do not produce a signature', async () => {
