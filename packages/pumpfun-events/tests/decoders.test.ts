@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import type { ProgramLogChunk } from '@ap3x/solana-events';
 import {
   bondingCurveDecoder,
+  camelCase,
+  decodeIdlAccount,
+  encodeIdlFields,
   eventKindSuffix,
   PUMP_AMM_SCHEMA,
   PUMP_SCHEMA,
@@ -10,7 +13,7 @@ import {
   PUMPFUN_BONDING_CURVE_PROGRAM_ID,
   PUMPFUN_PUMPSWAP_PROGRAM_ID,
 } from '../src/index.js';
-import { encodeEvent } from './_idl-encode.js';
+import { encodeEvent, sampleValue } from './_idl-encode.js';
 
 function chunk(dataPayloads: Uint8Array[], programId = PUMPFUN_BONDING_CURVE_PROGRAM_ID.toBase58()): ProgramLogChunk {
   return { programId, depth: 1, success: true, logs: [], dataPayloads, children: [], rawLines: [] };
@@ -150,5 +153,37 @@ describe('pumpSwapDecoder', () => {
       kind: 'pumpswap.other',
       eventName: 'CreateConfigEvent',
     });
+  });
+});
+
+describe('decodeIdlAccount', () => {
+  const encodeAccount = (name: string, fieldCount?: number) => {
+    const layout = PUMP_SCHEMA.accounts.find((a) => a.name === name)!;
+    const fields = layout.fields.slice(0, fieldCount ?? layout.fields.length);
+    const values = Object.fromEntries(fields.map((f) => [camelCase(f.name), sampleValue(f.type, PUMP_SCHEMA.types)]));
+    const disc = layout.discriminator.match(/../g)!.map((h) => parseInt(h, 16));
+    return { bytes: new Uint8Array([...disc, ...encodeIdlFields(fields, values, PUMP_SCHEMA.types)]), values };
+  };
+
+  it('decodes every field of an account', () => {
+    const { bytes, values } = encodeAccount('BondingCurve');
+    expect(decodeIdlAccount(PUMP_SCHEMA, 'BondingCurve', bytes)).toEqual(values);
+  });
+
+  it('keeps the prefix of an account created before later fields existed', () => {
+    const { bytes, values } = encodeAccount('BondingCurve', 7);
+    expect(decodeIdlAccount(PUMP_SCHEMA, 'BondingCurve', bytes)).toEqual(values);
+  });
+
+  it('ignores trailing padding', () => {
+    const { bytes, values } = encodeAccount('BondingCurve');
+    const padded = new Uint8Array([...bytes, 0, 0, 0, 0]);
+    expect(decodeIdlAccount(PUMP_SCHEMA, 'BondingCurve', padded)).toEqual(values);
+  });
+
+  it('rejects the wrong discriminator and unknown account names', () => {
+    const { bytes } = encodeAccount('Global');
+    expect(() => decodeIdlAccount(PUMP_SCHEMA, 'BondingCurve', bytes)).toThrow(/discriminator mismatch/);
+    expect(() => decodeIdlAccount(PUMP_SCHEMA, 'Nope', bytes)).toThrow(/not in schema/);
   });
 });

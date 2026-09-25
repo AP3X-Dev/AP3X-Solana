@@ -69,6 +69,23 @@ describe('buy', () => {
     expect(ix.keys.at(-1)!.pubkey.equals(key(9))).toBe(true); // buyback recipient from Global
   });
 
+  it('passes caller token program and accounts through on both paths', async () => {
+    const t22 = key(21);
+    const acct = key(22);
+    const quote = key(23);
+    const pre = await buy(chain({ complete: false }).rpc, MINT, { user: USER, solIn: 1n, minTokensOut: 1n, tokenProgram: t22, userTokenAccount: acct });
+    expect(pre.keys[5]!.pubkey.equals(acct)).toBe(true);
+    expect(pre.keys[8]!.pubkey.equals(t22)).toBe(true);
+    const post = await sell(chain({ complete: true }).rpc, MINT, { user: USER, tokenAmount: 1n, minSolOut: 1n, tokenProgram: t22, userTokenAccount: acct, userQuoteTokenAccount: quote });
+    expect(post.keys[5]!.pubkey.equals(acct)).toBe(true);
+    expect(post.keys[6]!.pubkey.equals(quote)).toBe(true);
+    expect(post.keys[11]!.pubkey.equals(t22)).toBe(true);
+    const postBuy = await buy(chain({ complete: true }).rpc, MINT, { user: USER, solIn: 1n, minTokensOut: 1n, tokenProgram: t22, userTokenAccount: acct, userQuoteTokenAccount: quote });
+    expect(postBuy.keys[6]!.pubkey.equals(quote)).toBe(true);
+    const preSell = await sell(chain({ complete: false }).rpc, MINT, { user: USER, tokenAmount: 1n, minSolOut: 0n, tokenProgram: t22, userTokenAccount: acct });
+    expect(preSell.keys[5]!.pubkey.equals(acct)).toBe(true);
+  });
+
   it('mayhem-mode coins pay the reserved fee recipient', async () => {
     const { rpc } = chain({ complete: false, mayhem: true });
     const ix = await buy(rpc, MINT, { user: USER, solIn: 1_000n, minTokensOut: 1n });

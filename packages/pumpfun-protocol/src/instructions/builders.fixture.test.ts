@@ -3,10 +3,17 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { PublicKey } from '@ap3x/solana-core';
 import type { Instruction } from '@ap3x/solana-tx';
-import { PUMP_AMM_SCHEMA, PUMP_SCHEMA } from '@ap3x/pumpfun-events';
+import { PUMP_AMM_SCHEMA, PUMP_SCHEMA, PUMPFUN_PUMPSWAP_PROGRAM_ID } from '@ap3x/pumpfun-events';
 import { decodeCurveState } from '../curve/state.js';
 import { decodePumpSwapPool } from '../pumpswap/pool-state.js';
-import { buildBuy, buildBuyExactSolIn, buildSell } from './bonding-curve.js';
+import { buildBuy, buildBuyExactSolIn, buildCreate, buildSell } from './bonding-curve.js';
+import {
+  deriveBondingCurvePda,
+  deriveCoinCreatorVaultAuthorityPda,
+  deriveCreatorVaultPda,
+  deriveEventAuthorityPda,
+  deriveUserVolumeAccumulatorPda,
+} from './account-derivation.js';
 import { buildPumpSwapBuy, buildPumpSwapBuyExactQuoteIn, buildPumpSwapSell } from './pumpswap.js';
 
 /**
@@ -187,5 +194,58 @@ describe('PumpSwap builders reproduce real mainnet instructions', () => {
       buildPumpSwapSell({ ...common, baseAmountIn: u64(data, 8), minQuoteAmountOut: u64(data, 16) }),
       f,
     );
+  });
+});
+
+describe('derivation helpers match the accounts in real instructions', () => {
+  it('creator vault and user volume accumulator (bonding curve)', () => {
+    const f = fixture('pump', 'buy');
+    const curve = decodeCurveState(Buffer.from(f.stateAccount.data, 'base64'), pk(f.accounts[2]!));
+    expect(deriveCreatorVaultPda(curve.creator).address.toBase58()).toBe(f.accounts[9]);
+    expect(deriveUserVolumeAccumulatorPda(pk(f.accounts[6]!)).address.toBase58()).toBe(f.accounts[13]);
+    expect(deriveEventAuthorityPda().address.toBase58()).toBe(f.accounts[10]);
+  });
+
+  it('coin creator vault authority and user volume accumulator (PumpSwap)', () => {
+    const f = fixture('pumpAmm', 'buy');
+    const pool = decodePumpSwapPool(Buffer.from(f.stateAccount.data, 'base64'), pk(f.accounts[0]!));
+    expect(deriveCoinCreatorVaultAuthorityPda(pool.coinCreator).address.toBase58()).toBe(f.accounts[18]);
+    expect(deriveUserVolumeAccumulatorPda(pk(f.accounts[1]!), PUMPFUN_PUMPSWAP_PROGRAM_ID).address.toBase58()).toBe(f.accounts[20]);
+    expect(deriveEventAuthorityPda(PUMPFUN_PUMPSWAP_PROGRAM_ID).address.toBase58()).toBe(f.accounts[15]);
+  });
+});
+
+describe('buildCreate', () => {
+  const mint = pk('So11111111111111111111111111111111111111112');
+  const payer = pk('11111111111111111111111111111112');
+  const base = { mint, payer, creator: payer, name: 'Name', symbol: 'SYM', uri: 'https://x' };
+
+  it('puts the mint first and the payer as user, both signing', () => {
+    const ix = buildCreate(base);
+    expect(ix.keys[0]).toMatchObject({ isSigner: true, isWritable: true });
+    expect(ix.keys[0]!.pubkey.equals(mint)).toBe(true);
+    expect(ix.keys[7]!.pubkey.equals(payer)).toBe(true);
+    expect(ix.keys[7]!.isSigner).toBe(true);
+    expect(ix.keys[2]!.pubkey.equals(deriveBondingCurvePda(mint).address)).toBe(true);
+    // disc + name + symbol + uri + creator
+    expect(ix.data.length).toBe(8 + (4 + 4) + (4 + 3) + (4 + 9) + 32);
+  });
+
+  it('validates name and symbol length', () => {
+    expect(() => buildCreate({ ...base, name: '' })).toThrow(/name/);
+    expect(() => buildCreate({ ...base, symbol: 'X'.repeat(17) })).toThrow(/symbol/);
+  });
+
+  it('rejects non-positive trade amounts', () => {
+    const f = fixture('pump', 'sell');
+    const common = {
+      mint: pk(f.accounts[2]!),
+      user: pk(f.accounts[6]!),
+      feeRecipient: pk(f.accounts[1]!),
+      creator: pk(f.accounts[0]!),
+      buybackFeeRecipient: pk(f.accounts[f.accounts.length - 1]!),
+    };
+    expect(() => buildSell({ ...common, amount: 0n, minSolOutput: 0n })).toThrow(/> 0/);
+    expect(() => buildBuy({ ...common, amount: 1n, maxSolCost: 0n })).toThrow(/> 0/);
   });
 });
