@@ -180,10 +180,10 @@ describe('Vault — addWallet / unlock / lock', () => {
     const sig = signed.slice(1, 1 + 64);
     const signedMessage = signed.slice(1 + 64);
     expect(
-      await ed.verifyAsync(sig, tx.slice(1), handle.address.toBuffer()),
+      await ed.verifyAsync(sig, payload, handle.address.toBuffer()),
     ).toBe(true);
     // The trailing message bytes must match the original payload we embedded.
-    expect(Buffer.from(signedMessage).equals(Buffer.from(tx.slice(1)))).toBe(true);
+    expect(Buffer.from(signedMessage).equals(Buffer.from(payload))).toBe(true);
   });
 
   it('writes a create audit entry on addWallet and unlock entry on unlock', async () => {

@@ -73,14 +73,27 @@ describe('WalletHandle', () => {
 
     const signed = await h.signTransaction(tx);
     expect(signed[0]).toBe(1);
-    // Output is [count(1) || new_sig(64) || tx.slice(1)]. Per the T11 spec
-    // the input's own 64-byte placeholder sig stays inside the signed region.
-    const expectedSignable = tx.slice(1);
-    expect(signed.length).toBe(1 + 64 + expectedSignable.length);
+    // Wire format is unchanged in length: the signature fills the placeholder
+    // slot and the signature covers the message bytes only.
+    expect(signed.length).toBe(tx.length);
     const sig = signed.slice(1, 1 + 64);
-    const signedMessage = signed.slice(1 + 64);
-    expect(Buffer.from(signedMessage).equals(Buffer.from(expectedSignable))).toBe(true);
-    expect(await ed.verifyAsync(sig, expectedSignable, pubkey)).toBe(true);
+    expect(Buffer.from(signed.slice(1 + 64)).equals(Buffer.from(message))).toBe(true);
+    expect(await ed.verifyAsync(sig, message, pubkey)).toBe(true);
+    // The caller's buffer is not mutated.
+    expect(tx.slice(1, 65).every((b) => b === 0)).toBe(true);
+  });
+
+  it('signTransaction ignores whatever is in the placeholder slot', async () => {
+    const h = new WalletHandle('trader', address, seed);
+    const message = new Uint8Array([0x80, 1, 0, 1, 7]);
+    const a = new Uint8Array(1 + 64 + message.length);
+    a[0] = 1;
+    a.set(message, 65);
+    const b = a.slice();
+    b.fill(0xff, 1, 65);
+    const sa = await h.signTransaction(a);
+    const sb = await h.signTransaction(b);
+    expect(Buffer.from(sa).equals(Buffer.from(sb))).toBe(true);
   });
 
   it('throws on signTransaction when given a zero-byte buffer', async () => {
@@ -114,20 +127,22 @@ describe('WalletHandle', () => {
     );
   });
 
-  it('accepts signTransaction at exactly V0_TX_MIN_LENGTH (65 bytes)', async () => {
+  it('rejects signTransaction with an empty message (exactly 65 bytes)', async () => {
     const h = new WalletHandle('trader', address, seed);
-    // [1 || zero(64)] — the minimum valid shape. The output re-includes the
-    // 64-byte placeholder region as part of the signed message (tx.slice(1)),
-    // so the output length is 1 + 64 + 64 = 129 bytes. This is the documented
-    // T11 behaviour, kept intact by the new guards.
+    // [1 || zero(64)] has no message to sign.
     const tx = new Uint8Array(1 + 64);
     tx[0] = 1;
+    await expect(h.signTransaction(tx)).rejects.toThrow(/too short/);
+  });
+
+  it('accepts signTransaction at the 66-byte minimum', async () => {
+    const h = new WalletHandle('trader', address, seed);
+    const tx = new Uint8Array(1 + 64 + 1);
+    tx[0] = 1;
+    tx[65] = 0x80;
     const signed = await h.signTransaction(tx);
-    expect(signed.length).toBe(1 + 64 + 64);
-    expect(signed[0]).toBe(1);
-    // Signature must verify against the signed portion (tx.slice(1)).
-    const sig = signed.slice(1, 1 + 64);
-    expect(await ed.verifyAsync(sig, tx.slice(1), pubkey)).toBe(true);
+    expect(signed.length).toBe(66);
+    expect(await ed.verifyAsync(signed.slice(1, 65), tx.slice(65), pubkey)).toBe(true);
   });
 
   it('rejects construction with a non-32-byte seed', () => {
@@ -202,7 +217,7 @@ describe('WalletHandle — SOL reserve guard', () => {
     const signed = await h.signTransaction(tx);
     // Per the T11 signTransaction contract: output = [1 || sig(64) || tx.slice(1)]
     // and tx.slice(1) is tx.length - 1 bytes (includes the placeholder region).
-    expect(signed.length).toBe(1 + 64 + (tx.length - 1));
+    expect(signed.length).toBe(tx.length);
     expect(signed[0]).toBe(1);
   });
 
@@ -244,7 +259,7 @@ describe('WalletHandle — SOL reserve guard', () => {
     const h = new WalletHandle('trader', address, seed);
     const tx = makeTx();
     const signed = await h.signTransaction(tx);
-    expect(signed.length).toBe(1 + 64 + (tx.length - 1));
+    expect(signed.length).toBe(tx.length);
     expect(signed[0]).toBe(1);
   });
 

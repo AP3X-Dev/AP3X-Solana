@@ -93,12 +93,11 @@ export class WalletReserveBreach extends Error {
 
 /**
  * Minimum plausible v0 single-signer transaction byte length: 1 byte for the
- * signature count prefix + 64 bytes for the mandatory single-signer signature
- * slot. The message that follows can in principle be empty (tests cover that
- * edge), so we guard only the structural prefix + slot here. Shorter inputs
- * can't match the `[1 || zero(64) || message]` layout this helper accepts.
+ * signature count prefix + 64 bytes for the single-signer signature slot +
+ * at least one message byte. An empty message has nothing to sign.
  */
-const V0_TX_MIN_LENGTH = 1 + 64;
+const V0_TX_MIN_LENGTH = 1 + 64 + 1;
+const SIG_SLOT_END = 1 + 64;
 
 export class WalletHandle {
   readonly address: PublicKey;
@@ -184,9 +183,10 @@ export class WalletHandle {
    *   - bytes 1..65: 64-byte placeholder for the signature (can be zero-filled)
    *   - bytes 65..: the message portion
    *
-   * The signed portion is `tx.slice(1)` (everything after the count prefix). The
-   * output is `[1 || sig(64) || tx.slice(1)]`, which re-includes the placeholder
-   * region — callers that have additional signers must use a different tx assembler.
+   * The signature covers the message bytes only (`tx.slice(65)`), as the Solana
+   * runtime verifies it. The output is `[1 || sig(64) || message]` — the same
+   * length as the input, with the placeholder replaced. The input buffer is not
+   * mutated. Callers with additional signers must use a different tx assembler.
    *
    * **Reserve guard (T12):** if all three of `reserveLamports`, `getBalance`,
    * and `estimateDelta` were configured at unlock time, this method fetches
@@ -194,7 +194,7 @@ export class WalletHandle {
    * `WalletReserveBreach` BEFORE signing if the projected balance would fall
    * below the reserve. A missing hook disables the guard.
    *
-   * Multi-signer support and proper message-only signing are deferred to
+   * Multi-signer support is deferred to
    * `@ap3x/solana-tx` (PRP-01 Task 22).
    */
   async signTransaction(tx: Uint8Array): Promise<Uint8Array> {
@@ -237,12 +237,9 @@ export class WalletHandle {
       }
     }
 
-    const messageBytes = tx.slice(1);
-    const signature = await ed.signAsync(messageBytes, key);
-    const out = new Uint8Array(1 + 64 + messageBytes.length);
-    out[0] = 1; // compact-u16 single-signer
+    const signature = await ed.signAsync(tx.subarray(SIG_SLOT_END), key);
+    const out = tx.slice();
     out.set(signature, 1);
-    out.set(messageBytes, 1 + 64);
     await this.#onSign?.('sign', {
       kind: 'transaction',
       byteLength: tx.length,
