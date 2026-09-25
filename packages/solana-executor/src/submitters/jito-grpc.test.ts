@@ -20,12 +20,13 @@ describe('JitoGrpcSubmitter', () => {
   it('sends a bundle via gRPC and receives a UUID', async () => {
     const sub = new JitoGrpcSubmitter({
       grpcEndpoint: `127.0.0.1:${server.port}`,
+      tls: false,
       tipAccount,
     });
     const ack = await sub.submit({
       kind: 'bundle',
       signedTxs: [new Uint8Array([1, 2, 3])],
-      tipLamports: 10_000n,
+
     });
     expect(ack.bundleId).toBe('fake-bundle-uuid');
     expect(ack.kind).toBe('bundle');
@@ -36,6 +37,7 @@ describe('JitoGrpcSubmitter', () => {
   it('rejects non-bundle payloads', async () => {
     const sub = new JitoGrpcSubmitter({
       grpcEndpoint: `127.0.0.1:${server.port}`,
+      tls: false,
       tipAccount,
     });
     await expect(
@@ -46,6 +48,7 @@ describe('JitoGrpcSubmitter', () => {
   it('updates health.lastOkAt after a successful submit', async () => {
     const sub = new JitoGrpcSubmitter({
       grpcEndpoint: `127.0.0.1:${server.port}`,
+      tls: false,
       tipAccount,
     });
     expect(sub.health().state).toBe('healthy');
@@ -54,7 +57,7 @@ describe('JitoGrpcSubmitter', () => {
     await sub.submit({
       kind: 'bundle',
       signedTxs: [new Uint8Array([9])],
-      tipLamports: 1_000n,
+
     });
     const h = sub.health();
     expect(h.state).toBe('healthy');
@@ -66,6 +69,7 @@ describe('JitoGrpcSubmitter', () => {
       () =>
         new JitoGrpcSubmitter({
           grpcEndpoint: `127.0.0.1:${server.port}`,
+          tls: false,
           tipAccount,
           protoCommit: 'deadbeef',
         }),
@@ -75,13 +79,14 @@ describe('JitoGrpcSubmitter', () => {
   it('accepts the correct pinned proto commit', async () => {
     const sub = new JitoGrpcSubmitter({
       grpcEndpoint: `127.0.0.1:${server.port}`,
+      tls: false,
       tipAccount,
       protoCommit: PINNED_COMMIT,
     });
     const ack = await sub.submit({
       kind: 'bundle',
       signedTxs: [new Uint8Array([7, 8])],
-      tipLamports: 5_000n,
+
     });
     expect(ack.bundleId).toBe('fake-bundle-uuid');
   });

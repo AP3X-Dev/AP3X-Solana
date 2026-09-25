@@ -1,22 +1,7 @@
 /**
- * Gate-5 failover test — when the primary submitter throws on the first
- * attempt, the retry loop re-enters `#execute` and the second attempt lands
- * through the backup submitter.
- *
- * The scenario:
- *   - Two RPC submitters: `primary` (throws once, then unhealthy) and `backup`
- *     (healthy, returns a signature).
- *   - Intent carries `retry: { maxAttempts: 2, bumpProgression: false }`, so
- *     the tier stays the same across retries — we're exercising failover,
- *     not fee escalation.
- *   - Attempt 1: `#execute` picks `primary` (first in submitters array),
- *     `primary.submit` throws → `rejected { code: 'submit_failed' }`. The
- *     retry loop flips `primary.health` to unhealthy between attempts.
- *   - Attempt 2: `#pickSubmitter` skips the unhealthy primary and picks
- *     `backup`, which returns `sig-backup`. `confirmLanded` reports it.
- *   - Final result: `landed` with `submitterUsed = 'backup'`.
- *
- * Two `executor.attempt` events fire, both at the caller's tier.
+ * Gate-5 failover: a submitter that throws is skipped within the same
+ * attempt, and a submitter's own health tracking keeps it out of rotation on
+ * later attempts until its cooldown ends.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -25,7 +10,7 @@ import { PublicKey } from '@ap3x/solana-core';
 import type { AssemblerResult } from '@ap3x/solana-tx';
 
 import { Executor } from '../src/executor.js';
-import type { Submitter, SubmitterHealth } from '../src/submitter.js';
+import { HealthTracker, type Submitter } from '../src/submitter.js';
 
 const SYS_PROGRAM = PublicKey.fromBytes(new Uint8Array(32));
 
@@ -67,37 +52,19 @@ function makeFakeAssemble(): (opts: unknown) => Promise<AssemblerResult> {
   });
 }
 
-describe('Executor failover (retry across submitters)', () => {
-  it('primary submitter throws → backup lands on retry', async () => {
+describe('Executor failover', () => {
+  it('fails over to the next submitter within the same attempt', async () => {
     const rpcPool = makeFakeRpc();
     const handle = makeFakeWalletHandle();
 
-    // Primary: throws once, and is toggled unhealthy on first failure so the
-    // retry picks the backup. This mirrors a real RPC endpoint's health
-    // probe surfacing a fault between attempts.
-    let primaryHealth: SubmitterHealth = { state: 'healthy' };
+    // Primary still reports healthy — the executor must not rely on the
+    // submitter noticing its own failure before trying the next one.
     const primarySubmit = vi.fn(async () => {
-      primaryHealth = { state: 'unhealthy', reason: 'connection refused' };
       throw new Error('primary RPC down');
     });
-    const primary: Submitter = {
-      name: 'primary',
-      kind: 'rpc',
-      submit: primarySubmit,
-      health: () => primaryHealth,
-    };
-
-    const backupSubmit = vi.fn(async () => ({
-      kind: 'tx' as const,
-      signature: 'sig-backup',
-      submitterUsed: 'backup',
-    }));
-    const backup: Submitter = {
-      name: 'backup',
-      kind: 'rpc',
-      submit: backupSubmit,
-      health: () => ({ state: 'healthy' }),
-    };
+    const primary: Submitter = { name: 'primary', kind: 'rpc', submit: primarySubmit, health: () => ({ state: 'healthy' }) };
+    const backupSubmit = vi.fn(async () => ({ kind: 'tx' as const, signature: 'sig-backup', submitterUsed: 'backup' }));
+    const backup: Submitter = { name: 'backup', kind: 'rpc', submit: backupSubmit, health: () => ({ state: 'healthy' }) };
 
     const exec = new Executor({
       rpcPool: rpcPool as never,
@@ -108,8 +75,7 @@ describe('Executor failover (retry across submitters)', () => {
       assemble: makeFakeAssemble(),
       simulateAndBudget: async () => ({ unitsConsumed: 150_000, unitsLimit: 172_500 }),
     });
-
-    const attempts: Array<{ intentId: string; attempt: number; feeTier: string }> = [];
+    const attempts: unknown[] = [];
     exec.on('executor.attempt', (e) => attempts.push(e));
 
     const result = await exec.submit({
@@ -118,52 +84,32 @@ describe('Executor failover (retry across submitters)', () => {
       instructions: [],
       feeTier: 'med',
       deadline: Date.now() + 5000,
-      retry: { maxAttempts: 2, bumpProgression: false },
     });
 
-    // Final result: landed, via the backup submitter.
-    expect(result.kind).toBe('landed');
-    if (result.kind === 'landed') {
-      expect(result.signature).toBe('sig-backup');
-      expect(result.submitterUsed).toBe('backup');
-    }
-
-    // Primary took the first attempt and threw; backup took the second.
+    expect(result).toMatchObject({ kind: 'landed', signature: 'sig-backup', submitterUsed: 'backup' });
     expect(primarySubmit).toHaveBeenCalledOnce();
     expect(backupSubmit).toHaveBeenCalledOnce();
-
-    // Two attempt events, both at the caller's `med` tier (no bump).
-    expect(attempts).toEqual([
-      { intentId: 'failover-1', attempt: 1, feeTier: 'med' },
-      { intentId: 'failover-1', attempt: 2, feeTier: 'med' },
-    ]);
+    // Default retry (1 attempt) was enough.
+    expect(attempts).toHaveLength(1);
   });
 
-  it('attempt 1 rejection is observable via result events before the retry completes', async () => {
-    // Extra coverage: confirm each attempt still fires a `result` event, so
-    // downstream telemetry sees both the transient rejection AND the final
-    // landed outcome — not just the landed envelope.
+  it('a failed submitter sits out the retry until its cooldown ends', async () => {
     const rpcPool = makeFakeRpc();
     const handle = makeFakeWalletHandle();
 
-    let primaryHealth: SubmitterHealth = { state: 'healthy' };
-    const primary: Submitter = {
-      name: 'primary',
-      kind: 'rpc',
-      submit: vi.fn(async () => {
-        primaryHealth = { state: 'unhealthy' };
-        throw new Error('boom');
-      }),
-      health: () => primaryHealth,
-    };
+    const primaryHealth = new HealthTracker(60_000);
+    const primarySubmit = vi.fn(async () => primaryHealth.track(async () => {
+      throw new Error('boom');
+    }));
+    const primary: Submitter = { name: 'primary', kind: 'rpc', submit: primarySubmit, health: () => primaryHealth.health() };
+    let backupCalls = 0;
     const backup: Submitter = {
       name: 'backup',
       kind: 'rpc',
-      submit: vi.fn(async () => ({
-        kind: 'tx' as const,
-        signature: 'sig-backup',
-        submitterUsed: 'backup',
-      })),
+      submit: vi.fn(async () => {
+        if (backupCalls++ === 0) throw new Error('transient');
+        return { kind: 'tx' as const, signature: 'sig-backup', submitterUsed: 'backup' };
+      }),
       health: () => ({ state: 'healthy' }),
     };
 
@@ -176,7 +122,6 @@ describe('Executor failover (retry across submitters)', () => {
       assemble: makeFakeAssemble(),
       simulateAndBudget: async () => ({ unitsConsumed: 150_000, unitsLimit: 172_500 }),
     });
-
     const results: Array<{ kind: string }> = [];
     exec.on('result', (r) => results.push(r));
 
@@ -189,10 +134,9 @@ describe('Executor failover (retry across submitters)', () => {
       retry: { maxAttempts: 2, bumpProgression: false },
     });
 
-    expect(final.kind).toBe('landed');
-    // Two result envelopes: the transient rejected on attempt 1, the landed on
-    // attempt 2. Consumers that want the terminal outcome use the return
-    // value; subscribers that want per-attempt telemetry use the event.
+    expect(final).toMatchObject({ kind: 'landed', submitterUsed: 'backup' });
     expect(results.map((r) => r.kind)).toEqual(['rejected', 'landed']);
+    expect(primarySubmit).toHaveBeenCalledOnce();
+    expect(primaryHealth.health().state).toBe('unhealthy');
   });
 });

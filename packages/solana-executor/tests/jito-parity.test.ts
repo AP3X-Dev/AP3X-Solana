@@ -25,13 +25,13 @@ describe('gate 9: Jito HTTP/gRPC parity', () => {
       });
       const grpcSub = new JitoGrpcSubmitter({
         grpcEndpoint: `127.0.0.1:${grpcServer.port}`,
+        tls: false,
         tipAccount,
       });
 
       const payload = {
         kind: 'bundle' as const,
         signedTxs: [new Uint8Array([1, 2, 3])],
-        tipLamports: 10_000n,
       };
       const httpAck = await httpSub.submit(payload);
       const grpcAck = await grpcSub.submit(payload);

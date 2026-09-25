@@ -1,4 +1,8 @@
-export interface BundleEntry { signedTx: Uint8Array; }
+export interface BundleEntry {
+  signedTx: Uint8Array;
+  /** Whether this transaction carries a Jito tip transfer. */
+  tipped?: boolean;
+}
 export type FlushFn = (entries: BundleEntry[]) => Promise<string[]>; // resolves per entry
 
 export interface BundleAccumulatorOpts {

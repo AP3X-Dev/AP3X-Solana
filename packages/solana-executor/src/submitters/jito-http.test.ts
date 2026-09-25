@@ -22,7 +22,7 @@ describe('JitoHttpSubmitter', () => {
       blockEngineUrl: 'https://mainnet.block-engine.jito.wtf',
       tipAccount,
     });
-    const ack = await sub.submit({ kind: 'bundle', signedTxs: [new Uint8Array([1])], tipLamports: 10_000n });
+    const ack = await sub.submit({ kind: 'bundle', signedTxs: [new Uint8Array([1])] });
     expect(ack.bundleId).toBe('bundle-uuid-abc');
   });
 
@@ -49,7 +49,7 @@ describe('JitoHttpSubmitter', () => {
       tipAccount,
     });
     await expect(
-      sub.submit({ kind: 'bundle', signedTxs: [new Uint8Array([2])], tipLamports: 5_000n }),
+      sub.submit({ kind: 'bundle', signedTxs: [new Uint8Array([2])] }),
     ).rejects.toThrow('jito-http error: bundle rejected: duplicate');
     // Reset to default handler
     server.resetHandlers();
@@ -64,7 +64,7 @@ describe('JitoHttpSubmitter', () => {
     expect(sub.health().state).toBe('healthy');
     expect(sub.health().lastOkAt).toBe(0);
     const before = Date.now();
-    await sub.submit({ kind: 'bundle', signedTxs: [new Uint8Array([3])], tipLamports: 1_000n });
+    await sub.submit({ kind: 'bundle', signedTxs: [new Uint8Array([3])] });
     const h = sub.health();
     expect(h.state).toBe('healthy');
     expect(h.lastOkAt).toBeGreaterThanOrEqual(before);
@@ -84,7 +84,7 @@ describe('JitoHttpSubmitter', () => {
       tipAccount,
       authToken: 'my-secret-token',
     });
-    const ack = await sub.submit({ kind: 'bundle', signedTxs: [new Uint8Array([4])], tipLamports: 1_000n });
+    const ack = await sub.submit({ kind: 'bundle', signedTxs: [new Uint8Array([4])] });
     expect(ack.bundleId).toBe('bundle-with-auth');
     expect(capturedAuthHeader).toBe('Bearer my-secret-token');
     server.resetHandlers();

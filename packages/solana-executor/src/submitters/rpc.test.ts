@@ -24,7 +24,7 @@ describe('RpcSubmitter', () => {
       call: vi.fn(),
     };
     const sub = new RpcSubmitter({ rpcPool });
-    await expect(sub.submit({ kind: 'bundle', signedTxs: [], tipLamports: 0n })).rejects.toThrow();
+    await expect(sub.submit({ kind: 'bundle', signedTxs: [] })).rejects.toThrow();
   });
 
   it('reports healthy with lastOkAt after successful submit', async () => {

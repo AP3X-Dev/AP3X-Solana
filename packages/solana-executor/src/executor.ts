@@ -37,11 +37,12 @@
 
 import { EventEmitter } from 'node:events';
 
-import type { PublicKey } from '@ap3x/solana-core';
+import { base58, type PublicKey } from '@ap3x/solana-core';
 import type { RpcPool } from '@ap3x/solana-connectivity';
 import {
   assemble as defaultAssemble,
   simulateAndBudget as defaultSimulateAndBudget,
+  JitoBundleBuilder,
   type AssemblerOptions,
   type AssemblerResult,
   type Instruction as TxInstruction,
@@ -106,6 +107,8 @@ export interface ExecutorOpts {
    */
   resolveWallet: (name: string) => Promise<WalletHandle>;
   submitters: Submitter[];
+  /** Jito tip account that bundle intents' `tipLamports` are paid to. */
+  jitoTipAccount?: PublicKey;
   defaultSubmitter: 'rpc' | 'jito-http' | 'jito-grpc';
   fallbackChain?: Array<'jito-grpc' | 'jito-http' | 'rpc'>;
   bundleWindowMs?: number;
@@ -121,7 +124,9 @@ export interface ExecutorOpts {
  * class's private `opts` so every branch below can access defaults without
  * `??` ladders everywhere.
  */
-interface ResolvedOpts extends Required<Omit<ExecutorOpts, 'assemble' | 'simulateAndBudget'>> {
+interface ResolvedOpts
+  extends Required<Omit<ExecutorOpts, 'assemble' | 'simulateAndBudget' | 'jitoTipAccount'>> {
+  jitoTipAccount: PublicKey | undefined;
   assemble: AssembleFn;
   simulateAndBudget: SimulateAndBudgetFn;
 }
@@ -152,6 +157,7 @@ export class Executor extends EventEmitter {
       feeEstimator: opts.feeEstimator,
       resolveWallet: opts.resolveWallet,
       submitters: opts.submitters,
+      jitoTipAccount: opts.jitoTipAccount,
       defaultSubmitter: opts.defaultSubmitter,
       fallbackChain: opts.fallbackChain ?? ['jito-grpc', 'jito-http', 'rpc'],
       bundleWindowMs: opts.bundleWindowMs ?? 50,
@@ -299,6 +305,15 @@ export class Executor extends EventEmitter {
 
     // --- 4. Assemble + sign ---------------------------------------------
     const txInstructions: TxInstruction[] = intent.instructions.map(adaptInstruction);
+    const tipLamports = intent.submitter?.bundleGroup !== undefined ? (intent.submitter.tipLamports ?? 0n) : 0n;
+    if (tipLamports > 0n) {
+      if (!this.#opts.jitoTipAccount) {
+        return this.#rejected(intent, undefined, 'no_tip_account', 'tipLamports set but no jitoTipAccount configured');
+      }
+      txInstructions.push(
+        new JitoBundleBuilder().tipInstruction(handle.address, this.#opts.jitoTipAccount, tipLamports),
+      );
+    }
     let signedTx: Uint8Array;
     try {
       // PRP-03 wires ALT lookups; `intent.altHints` is reserved for then. We
@@ -331,7 +346,8 @@ export class Executor extends EventEmitter {
     void this.#emitBudgetTelemetry(intent, signedTx, handle.address);
 
     // --- 6. Routing ------------------------------------------------------
-    const submitter = this.#pickSubmitter(intent);
+    const candidates = this.#candidates(intent);
+    const submitter = candidates[0];
     if (!submitter) {
       return this.#rejected(
         intent,
@@ -347,39 +363,45 @@ export class Executor extends EventEmitter {
     if (intent.submitter?.bundleGroup !== undefined) {
       let signature: string;
       try {
-        signature = await this.#bundleAcc.add(intent.submitter.bundleGroup, { signedTx });
+        signature = await this.#bundleAcc.add(intent.submitter.bundleGroup, {
+          signedTx,
+          tipped: tipLamports > 0n,
+        });
       } catch (err: unknown) {
         return this.#rejected(
           intent,
-          submitter.name,
-          'bundle_flush_failed',
+          undefined,
+          err instanceof BundleWithoutTipError ? 'bundle_without_tip' : 'bundle_flush_failed',
           err instanceof Error ? err.message : String(err),
         );
       }
-      return this.#confirm(intent, signature, submitter.name);
+      return this.#confirm(intent, signature, this.#lastBundleSubmitter ?? submitter.name);
     }
 
     // --- 8. Single-tx path ----------------------------------------------
-    let ack: SubmissionAck;
-    try {
-      ack = await submitter.submit({ kind: 'tx', signedTx });
-    } catch (err: unknown) {
-      return this.#rejected(
-        intent,
-        submitter.name,
-        'submit_failed',
-        err instanceof Error ? err.message : String(err),
-      );
+    // Fail over within the attempt: the same signed transaction is safe to
+    // resend through the next submitter (same signature, lands at most once).
+    const errors: string[] = [];
+    for (const candidate of candidates.filter((c) => c.kind !== 'jito-http' && c.kind !== 'jito-grpc')) {
+      let ack: SubmissionAck;
+      try {
+        ack = await candidate.submit({ kind: 'tx', signedTx });
+      } catch (err: unknown) {
+        errors.push(`${candidate.name}: ${err instanceof Error ? err.message : String(err)}`);
+        continue;
+      }
+      if (!ack.signature) {
+        errors.push(`${candidate.name}: returned no signature for tx payload`);
+        continue;
+      }
+      return this.#confirm(intent, ack.signature, candidate.name);
     }
-    if (!ack.signature) {
-      return this.#rejected(
-        intent,
-        submitter.name,
-        'submit_failed',
-        'submitter returned no signature for tx payload',
-      );
-    }
-    return this.#confirm(intent, ack.signature, submitter.name);
+    return this.#rejected(
+      intent,
+      submitter.name,
+      'submit_failed',
+      errors.join('; ') || 'no submitter accepts single transactions',
+    );
   }
 
   async #confirm(
@@ -436,20 +458,20 @@ export class Executor extends EventEmitter {
     return r;
   }
 
-  #pickSubmitter(intent: TradeIntent): Submitter | null {
+  /** Healthy submitters in preference order: the requested kind, then the fallback chain. */
+  #candidates(intent: TradeIntent): Submitter[] {
     const wantedKind = intent.submitter?.kind ?? this.#opts.defaultSubmitter;
     const ordered: string[] = [
       wantedKind,
       ...this.#opts.fallbackChain.filter((k) => k !== wantedKind),
     ];
-    for (const kind of ordered) {
-      const candidate = this.#opts.submitters.find(
-        (s) => s.kind === kind && s.health().state !== 'unhealthy',
-      );
-      if (candidate) return candidate;
-    }
-    return null;
+    return ordered.flatMap((kind) =>
+      this.#opts.submitters.filter((s) => s.kind === kind && s.health().state !== 'unhealthy'),
+    );
   }
+
+  /** Submitter that accepted the most recent bundle (for `submitterUsed`). */
+  #lastBundleSubmitter: string | undefined;
 
   #emitBudgetTelemetry(
     intent: TradeIntent,
@@ -482,29 +504,47 @@ export class Executor extends EventEmitter {
     })();
   }
 
-  async #flushBundle(entries: { signedTx: Uint8Array }[]): Promise<string[]> {
-    const sub = this.#opts.submitters.find(
-      (s) =>
-        (s.kind === 'jito-grpc' || s.kind === 'jito-http') &&
-        s.health().state !== 'unhealthy',
-    );
-    if (!sub) {
-      throw new Error('no healthy Jito submitter configured for bundle flush');
+  async #flushBundle(entries: { signedTx: Uint8Array; tipped?: boolean }[]): Promise<string[]> {
+    if (!entries.some((e) => e.tipped)) {
+      throw new BundleWithoutTipError();
     }
-    const ack = await sub.submit({
-      kind: 'bundle',
-      signedTxs: entries.map((e) => e.signedTx),
-      tipLamports: 10_000n,
-    });
-    const bundleId = ack.bundleId ?? 'unknown';
-    // BundleAccumulator resolves each intent with a per-entry string. Jito
-    // acks the whole bundle with a single `bundleId` — we synthesize
-    // per-entry identifiers by appending the entry index. Confirmation polls
-    // signatures directly (via `confirmLanded`) using these placeholders;
-    // PRP-03 will thread real signature recovery when intents need to be
-    // distinguished inside a bundle.
-    return entries.map((_, i) => `${bundleId}-${i}`);
+    const jito = this.#opts.fallbackChain
+      .concat(['jito-grpc', 'jito-http'])
+      .filter((k) => k === 'jito-grpc' || k === 'jito-http')
+      .flatMap((kind) =>
+        this.#opts.submitters.filter((s) => s.kind === kind && s.health().state !== 'unhealthy'),
+      );
+    const errors: string[] = [];
+    for (const sub of new Set(jito)) {
+      try {
+        await sub.submit({ kind: 'bundle', signedTxs: entries.map((e) => e.signedTx) });
+      } catch (err: unknown) {
+        errors.push(`${sub.name}: ${err instanceof Error ? err.message : String(err)}`);
+        continue;
+      }
+      this.#lastBundleSubmitter = sub.name;
+      // Each entry is confirmed by its own transaction signature — the first
+      // signature in its wire bytes.
+      return entries.map((e) => transactionSignature(e.signedTx));
+    }
+    throw new Error(`bundle submission failed: ${errors.join('; ') || 'no healthy Jito submitter'}`);
   }
+}
+
+/** Rejects a bundle in which no transaction pays a Jito tip. */
+export class BundleWithoutTipError extends Error {
+  constructor() {
+    super('bundle has no tip: set submitter.tipLamports on at least one intent in the group');
+    this.name = 'BundleWithoutTipError';
+  }
+}
+
+/** A signed transaction's signature: bytes 1..65 after the 1-byte count. */
+export function transactionSignature(signedTx: Uint8Array): string {
+  if (signedTx.length < 65 || signedTx[0] === 0) {
+    throw new Error('signed transaction is too short to carry a signature');
+  }
+  return base58.encode(signedTx.subarray(1, 65));
 }
 
 /**
@@ -531,6 +571,8 @@ const TERMINAL_REJECT_CODES: ReadonlySet<string> = new Set([
   'sign_failed',
   'wallet_locked',
   'no_jito_submitter_for_bundle',
+  'no_tip_account',
+  'bundle_without_tip',
 ]);
 
 /**

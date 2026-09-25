@@ -11,6 +11,12 @@ export type FeeTier = 'low' | 'med' | 'high' | 'turbo';
 export interface SubmitterHint {
   kind: 'rpc' | 'jito-http' | 'jito-grpc';
   bundleGroup?: string;
+  /**
+   * Jito tip, in lamports, paid from this intent's wallet to the executor's
+   * `jitoTipAccount`. The transfer is added to this intent's transaction.
+   * At least one intent in a bundle must tip or Jito drops the bundle.
+   */
+  tipLamports?: bigint;
 }
 
 export interface TradeIntent {

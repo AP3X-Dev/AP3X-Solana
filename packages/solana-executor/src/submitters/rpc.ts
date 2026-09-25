@@ -1,19 +1,22 @@
 import type { RpcPool } from '@ap3x/solana-connectivity';
 import { base58 } from '@ap3x/solana-core';
-import type { Submitter, SubmitPayload, SubmissionAck, SubmitterHealth } from '../submitter.js';
+import { HealthTracker, type Submitter, type SubmitPayload, type SubmissionAck, type SubmitterHealth } from '../submitter.js';
 
 export interface RpcSubmitterOpts {
   rpcPool: RpcPool;
+  /** How long a failure marks this submitter unhealthy (default 30s). */
+  unhealthyCooldownMs?: number;
 }
 
 export class RpcSubmitter implements Submitter {
   readonly name = 'rpc';
   readonly kind = 'rpc' as const;
   readonly #rpcPool: RpcPool;
-  #lastOkAt = 0;
+  readonly #health: HealthTracker;
 
   constructor(opts: RpcSubmitterOpts) {
     this.#rpcPool = opts.rpcPool;
+    this.#health = new HealthTracker(opts.unhealthyCooldownMs);
   }
 
   async submit(payload: SubmitPayload): Promise<SubmissionAck> {
@@ -21,22 +24,21 @@ export class RpcSubmitter implements Submitter {
       throw new Error('RpcSubmitter only handles single-tx payloads; use JitoSubmitter for bundles');
     }
 
-    // Pin the best endpoint for write affinity (lowest EWMA, non-unhealthy).
-    // We don't call on the descriptor itself — `rpcPool.call()` routes through
-    // the pool's transport layer. `pinForWrite()` is called to warm the pool's
-    // selection heuristic and surface config errors (circuit_open) early.
-    this.#rpcPool.pinForWrite();
+    return this.#health.track(async () => {
+      // Pin the best endpoint for write affinity (lowest EWMA, non-unhealthy).
+      // `pinForWrite()` warms the pool's selection heuristic and surfaces
+      // config errors (circuit_open) early.
+      this.#rpcPool.pinForWrite();
 
-    const sig = await this.#rpcPool.call('sendTransaction', [
-      base58.encode(payload.signedTx),
-      { skipPreflight: true, maxRetries: 0, encoding: 'base58' },
-    ]);
-
-    this.#lastOkAt = Date.now();
-    return { kind: 'tx', signature: sig as string, submitterUsed: this.name };
+      const sig = await this.#rpcPool.call('sendTransaction', [
+        base58.encode(payload.signedTx),
+        { skipPreflight: true, maxRetries: 0, encoding: 'base58' },
+      ]);
+      return { kind: 'tx' as const, signature: sig as string, submitterUsed: this.name };
+    });
   }
 
   health(): SubmitterHealth {
-    return { state: 'healthy', lastOkAt: this.#lastOkAt };
+    return this.#health.health();
   }
 }
