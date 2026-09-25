@@ -427,6 +427,10 @@ importers:
         version: 2.1.9(@types/node@20.19.39)(msw@2.13.4(@types/node@20.19.39)(typescript@5.9.3))
 
   packages/solana-trading:
+    dependencies:
+      '@ap3x/solana-executor':
+        specifier: workspace:*
+        version: link:../solana-executor
     devDependencies:
       tsup:
         specifier: ^8.3.0

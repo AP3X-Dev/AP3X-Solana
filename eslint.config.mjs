@@ -73,6 +73,7 @@ export default [
         { type: 'portfolio', pattern: 'packages/solana-portfolio/src/**' },
         { type: 'executor', pattern: 'packages/solana-executor/src/**' },
         { type: 'strategy', pattern: 'packages/solana-strategy/src/**' },
+        { type: 'trading', pattern: 'packages/solana-trading/src/**' },
         { type: 'pumpfun-events', pattern: 'packages/pumpfun-events/src/**' },
         { type: 'pumpfun-protocol', pattern: 'packages/pumpfun-protocol/src/**' },
         { type: 'example', pattern: 'examples/**/src/**' },
@@ -109,6 +110,7 @@ export default [
             { from: 'portfolio', allow: ['core', 'connectivity', 'events', 'spl'] },
             { from: 'executor', allow: ['core', 'connectivity', 'tx', 'vault'] },
             { from: 'strategy', allow: ['core', 'signals', 'executor', 'portfolio', 'vault'] },
+            { from: 'trading', allow: ['executor'] },
             { from: 'pumpfun-events', allow: ['core', 'events', 'tx'] },
             { from: 'pumpfun-protocol', allow: ['core', 'connectivity', 'events', 'spl', 'metaplex', 'tx', 'pumpfun-events'] },
             {
@@ -123,6 +125,7 @@ export default [
                 'vault',
                 'signals',
                 'strategy',
+                'trading',
                 'executor',
                 'portfolio',
                 'pumpfun-events',

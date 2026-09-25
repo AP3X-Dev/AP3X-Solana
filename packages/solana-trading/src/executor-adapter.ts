@@ -1,30 +1,16 @@
+import type { FeeTier, Instruction, SubmitterHint, TradeIntent } from '@ap3x/solana-executor';
 import type { SwapIntent } from './intents.js';
 import { swapIntentIdempotencyKey } from './intents.js';
 
-export interface Instruction {
-  readonly programId: unknown;
-  readonly accounts: ReadonlyArray<{ readonly pubkey: unknown; readonly isSigner: boolean; readonly isWritable: boolean }>;
-  readonly data: Uint8Array;
-}
+/**
+ * Bridge from a venue-agnostic {@link SwapIntent} to the executor's
+ * instruction-level {@link TradeIntent}. The executor's own types are used
+ * directly, so the result is passed to `Executor.submit` as-is.
+ */
 
-export type FeeTier = 'low' | 'med' | 'high' | 'turbo';
-
-export interface SubmitterHint {
-  readonly kind: 'rpc' | 'jito-http' | 'jito-grpc';
-  readonly bundleGroup?: string;
-}
-
-export interface InstructionLevelTradeIntent {
-  readonly intentId: string;
-  readonly wallet: string;
-  readonly instructions: Instruction[];
-  readonly altHints?: unknown[];
-  readonly feeTier: FeeTier;
-  readonly computeBudgetHint?: number;
-  readonly deadline: number;
-  readonly submitter?: SubmitterHint;
-  readonly retry?: { readonly maxAttempts?: number; readonly bumpProgression?: boolean };
-}
+export type { FeeTier, Instruction, SubmitterHint };
+/** The executor's intent type (kept under its earlier name here). */
+export type InstructionLevelTradeIntent = TradeIntent;
 
 export interface ToExecutorTradeIntentInput {
   readonly intent: SwapIntent;
@@ -33,10 +19,10 @@ export interface ToExecutorTradeIntentInput {
   readonly feeTier: FeeTier;
   readonly deadline: number;
   readonly intentId?: string;
-  readonly altHints?: readonly unknown[];
+  readonly altHints?: TradeIntent['altHints'];
   readonly computeBudgetHint?: number;
   readonly submitter?: SubmitterHint;
-  readonly retry?: InstructionLevelTradeIntent['retry'];
+  readonly retry?: TradeIntent['retry'];
 }
 
 /**
@@ -46,7 +32,7 @@ export interface ToExecutorTradeIntentInput {
  * This helper preserves the high-level intent idempotency key as the executor
  * `intentId`, unless an explicit override is supplied.
  */
-export function toExecutorTradeIntent(input: ToExecutorTradeIntentInput): InstructionLevelTradeIntent {
+export function toExecutorTradeIntent(input: ToExecutorTradeIntentInput): TradeIntent {
   return {
     intentId: input.intentId ?? swapIntentIdempotencyKey(input.intent),
     wallet: input.wallet,
