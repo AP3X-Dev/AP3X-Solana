@@ -4,9 +4,10 @@ on:
   push:
     branches: [main, prp-*]
   pull_request:
+  workflow_dispatch:
   schedule:
     # 05:17 UTC nightly — avoids common on-the-hour GitHub-Actions contention.
-    # Drives the pumpfun-nightly-diag job (surfaces pump.fun program upgrades).
+    # Drives the nightly-diag job (surfaces RPC and pump.fun program drift).
     - cron: '17 5 * * *'
 
 concurrency:
@@ -84,16 +85,20 @@ jobs:
           done
           exit $failed
 
-  # Nightly diag — probes a small sample of recent pump.fun transactions and
-  # fails if the decoder's UnknownEventDecode ratio exceeds 10% on either
-  # program. That threshold surfaces program upgrades (discriminator or layout
-  # drift) before production breaks. Self-skips without HELIUS_API_KEY.
-  #
+  # Nightly diagnostics against mainnet (see docs/diagnostics/README.md):
+  #   1. Substrate RPC probe — the configured endpoint answers getSlot.
+  #   2. pump.fun decoder coverage — fails when more than 10% of recent event
+  #      payloads on either program decode as unknown (program upgrade).
+  #   3. pump.fun live simulation — a buy built from on-chain state must be
+  #      accepted by the deployed program (account/instruction drift).
+  # Uses the SOLANA_RPC_URL secret when set, otherwise the public endpoint.
   # When this alarms, follow docs/runbook/pumpfun-fixture-refresh.md.
-  pumpfun-nightly-diag:
-    if: github.event_name == 'schedule'
-    name: pumpfun-nightly-diag
+  nightly-diag:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: nightly-diag
     runs-on: ubuntu-latest
+    env:
+      RPC_URL: ${{ secrets.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -111,13 +116,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build (diag imports built @ap3x/pumpfun-events)
-        run: pnpm --filter @ap3x/pumpfun-events build
+      - name: Build
+        run: pnpm build
 
-      - name: Run diag probe
+      - name: Substrate RPC probe
+        run: pnpm --filter @ap3x/solana-connectivity diag probe-rpc --url "$RPC_URL" --check
+
+      - name: pump.fun decoder coverage
         run: pnpm --filter @ap3x/pumpfun-events run diag
+
+      - name: pump.fun live simulation
+        run: pnpm --filter @ap3x/pumpfun-protocol exec vitest run tests/live-simulation.test.ts
         env:
-          HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
+          AP3X_LIVE_RPC: ${{ env.RPC_URL }}
 
   # Runs the @ap3x/solana-webhooks Postgres outbox parity tests against a
   # service container, once per supported Postgres major. The same parity

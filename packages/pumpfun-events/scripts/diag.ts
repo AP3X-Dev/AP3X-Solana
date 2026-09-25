@@ -9,18 +9,18 @@
  *   - Fails the run (exit 1) when the unknown ratio exceeds 10% on a program
  *     we know has observed variants. This surfaces pump.fun program upgrades
  *     that change discriminators or layouts before production breaks.
- *   - Self-skips (exit 0) when HELIUS_API_KEY is unset, matching the capture
- *     script pattern used across the repo. Keeps the scheduled CI job
- *     resilient to secret rotation windows.
+ *   - Counts event payloads, not invocations: pump.fun's self-CPI event
+ *     frames carry no `Program data:` line and are not decode failures.
+ *   - Endpoint: RPC_URL, else HELIUS_API_KEY, else the public mainnet RPC
+ *     (see tests/helpers/capture/_rpc.ts), with backoff on rate limits.
  *
  * Wiring: run via `pnpm --filter @ap3x/pumpfun-events run diag`. The nightly
- * job in `.github/workflows/ci.yml` (`pumpfun-nightly-diag`) invokes it on a
- * 05:17 UTC cron and injects HELIUS_API_KEY from the repo secrets store.
+ * job in `.github/workflows/ci.yml` (`nightly-diag`) runs it on a 05:17 UTC
+ * cron.
  *
  * Remediation when this fails: see docs/runbook/pumpfun-fixture-refresh.md.
  */
 
-import { RpcPool } from '@ap3x/solana-connectivity';
 import { parseLogs, walkInvocations } from '@ap3x/solana-events';
 import type { ProgramDecoder, UnknownEventDecode } from '@ap3x/solana-events';
 import {
@@ -29,8 +29,9 @@ import {
   bondingCurveDecoder,
   pumpSwapDecoder,
 } from '@ap3x/pumpfun-events';
+import { rpc } from '../../../tests/helpers/capture/_rpc.js';
 
-const SAMPLE_TXS_PER_PROGRAM = 20;
+const SAMPLE_TXS_PER_PROGRAM = 60;
 const UNKNOWN_RATIO_THRESHOLD = 0.10;
 
 interface SignatureInfo {
@@ -47,9 +48,7 @@ interface TransactionResponse {
 }
 
 interface DecoderLike {
-  decode(chunk: Parameters<ProgramDecoder<unknown>['decode']>[0]):
-    | { kind: string }
-    | UnknownEventDecode;
+  decodeAll(chunk: Parameters<ProgramDecoder<unknown>['decode']>[0]): Array<{ kind: string } | UnknownEventDecode>;
 }
 
 interface ProbeResult {
@@ -63,12 +62,11 @@ interface ProbeResult {
 }
 
 async function probeProgram(
-  pool: RpcPool,
   programId: string,
   programLabel: string,
   decoder: DecoderLike,
 ): Promise<ProbeResult> {
-  const sigs = (await pool.call('getSignaturesForAddress', [
+  const sigs = (await rpc('getSignaturesForAddress', [
     programId,
     { limit: SAMPLE_TXS_PER_PROGRAM },
   ])) as SignatureInfo[];
@@ -80,7 +78,7 @@ async function probeProgram(
   for (const sig of sigs) {
     // Skip failed txs — program error paths don't emit the same log schema.
     if (sig.err) continue;
-    const tx = (await pool.call('getTransaction', [
+    const tx = (await rpc('getTransaction', [
       sig.signature,
       { maxSupportedTransactionVersion: 1 },
     ])) as TransactionResponse | null;
@@ -89,10 +87,10 @@ async function probeProgram(
 
     const parsed = parseLogs(tx.meta.logMessages);
     for (const { chunk } of walkInvocations(parsed)) {
-      if (chunk.programId !== programId) continue;
-      totalChunks++;
-      if (decoder.decode(chunk).kind === 'unknown') {
-        unknownChunks++;
+      if (chunk.programId !== programId || chunk.dataPayloads.length === 0) continue;
+      for (const ev of decoder.decodeAll(chunk)) {
+        totalChunks++;
+        if (ev.kind === 'unknown') unknownChunks++;
       }
     }
   }
@@ -121,32 +119,12 @@ function formatResult(r: ProbeResult): string {
 }
 
 async function main(): Promise<void> {
-  const apiKey = process.env['HELIUS_API_KEY'];
-  if (!apiKey) {
-    console.log(
-      'HELIUS_API_KEY not set — diag probe self-skipping. Rerun with the secret wired to exercise the gate.',
-    );
-    return;
-  }
-
-  const pool = new RpcPool({
-    endpoints: [
-      {
-        name: 'helius',
-        kind: 'http',
-        url: `https://mainnet.helius-rpc.com/?api-key=${apiKey}`,
-      },
-    ],
-    timeoutMs: 30_000,
-  });
-
   const bondingCurveProgramId = PUMPFUN_BONDING_CURVE_PROGRAM_ID.toBase58();
   const pumpSwapProgramId = PUMPFUN_PUMPSWAP_PROGRAM_ID.toBase58();
 
   const results: ProbeResult[] = [];
   results.push(
     await probeProgram(
-      pool,
       bondingCurveProgramId,
       'bonding-curve',
       bondingCurveDecoder as DecoderLike,
@@ -154,7 +132,6 @@ async function main(): Promise<void> {
   );
   results.push(
     await probeProgram(
-      pool,
       pumpSwapProgramId,
       'pumpswap',
       pumpSwapDecoder as DecoderLike,
