@@ -1,6 +1,17 @@
 {
   "name": "@ap3x/pumpfun-events",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Decoders for pump.fun bonding-curve and PumpSwap events, generated from the published program IDLs.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AP3X-Dev/AP3X-Solana.git",
+    "directory": "packages/pumpfun-events"
+  },
+  "homepage": "https://github.com/AP3X-Dev/AP3X-Solana/tree/main/packages/pumpfun-events#readme",
+  "bugs": {
+    "url": "https://github.com/AP3X-Dev/AP3X-Solana/issues"
+  },
   "private": true,
   "type": "module",
   "main": "dist/index.cjs",
@@ -14,7 +25,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
     "build": "tsup",

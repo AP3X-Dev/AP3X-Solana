@@ -1,6 +1,17 @@
 {
   "name": "@ap3x/solana-executor",
-  "version": "0.0.0",
+  "version": "0.4.0",
+  "description": "Turns trade intents into landed Solana transactions via RPC or Jito, with failover.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AP3X-Dev/AP3X-Solana.git",
+    "directory": "packages/solana-executor"
+  },
+  "homepage": "https://github.com/AP3X-Dev/AP3X-Solana/tree/main/packages/solana-executor#readme",
+  "bugs": {
+    "url": "https://github.com/AP3X-Dev/AP3X-Solana/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -12,7 +23,10 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

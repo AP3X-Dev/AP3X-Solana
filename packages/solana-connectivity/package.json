@@ -1,6 +1,17 @@
 {
   "name": "@ap3x/solana-connectivity",
-  "version": "0.1.0",
+  "version": "0.4.0",
+  "description": "Solana RPC pool, Yellowstone Geyser client, historical backfill and diagnostics.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AP3X-Dev/AP3X-Solana.git",
+    "directory": "packages/solana-connectivity"
+  },
+  "homepage": "https://github.com/AP3X-Dev/AP3X-Solana/tree/main/packages/solana-connectivity#readme",
+  "bugs": {
+    "url": "https://github.com/AP3X-Dev/AP3X-Solana/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

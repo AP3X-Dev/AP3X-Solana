@@ -1,6 +1,17 @@
 {
   "name": "@ap3x/solana-trading",
-  "version": "0.3.0",
+  "version": "0.4.0",
+  "description": "Venue-agnostic swap intents and a backtester, bridged to the executor.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AP3X-Dev/AP3X-Solana.git",
+    "directory": "packages/solana-trading"
+  },
+  "homepage": "https://github.com/AP3X-Dev/AP3X-Solana/tree/main/packages/solana-trading#readme",
+  "bugs": {
+    "url": "https://github.com/AP3X-Dev/AP3X-Solana/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

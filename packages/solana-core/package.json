@@ -1,6 +1,17 @@
 {
   "name": "@ap3x/solana-core",
-  "version": "0.1.0",
+  "version": "0.4.0",
+  "description": "Solana primitives: PublicKey, base58, Borsh, HTTP/RPC client, errors and metrics.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AP3X-Dev/AP3X-Solana.git",
+    "directory": "packages/solana-core"
+  },
+  "homepage": "https://github.com/AP3X-Dev/AP3X-Solana/tree/main/packages/solana-core#readme",
+  "bugs": {
+    "url": "https://github.com/AP3X-Dev/AP3X-Solana/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -12,7 +23,10 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run --coverage",

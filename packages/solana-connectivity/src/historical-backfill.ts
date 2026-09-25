@@ -131,11 +131,9 @@ export interface IterateSignaturesOptions extends GetSignaturesOptions {
 export interface GetTransactionOptions {
   encoding?: 'json' | 'jsonParsed' | 'base58' | 'base64';
   /**
-   * Max version of the tx format the caller is willing to accept. This
-   * project only ships v0 support. Defaulted to 0 when not supplied because
-   * omitting the field entirely makes the node fall back to legacy-only
-   * responses for versioned transactions — that silently drops data and is
-   * a footgun.
+   * Max version of the tx format the caller is willing to accept. Defaults
+   * to 1: omitting the field makes the node fall back to legacy-only
+   * responses, and mainnet carries v1 transactions that a lower cap rejects.
    */
   maxSupportedTransactionVersion?: number;
   commitment?: Commitment;

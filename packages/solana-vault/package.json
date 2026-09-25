@@ -1,6 +1,17 @@
 {
   "name": "@ap3x/solana-vault",
-  "version": "0.1.0",
+  "version": "0.4.0",
+  "description": "Encrypted keypair vault with per-role SOL reserve guards.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AP3X-Dev/AP3X-Solana.git",
+    "directory": "packages/solana-vault"
+  },
+  "homepage": "https://github.com/AP3X-Dev/AP3X-Solana/tree/main/packages/solana-vault#readme",
+  "bugs": {
+    "url": "https://github.com/AP3X-Dev/AP3X-Solana/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

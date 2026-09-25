@@ -1,6 +1,16 @@
 {
   "name": "@ap3x/pumpfun-signals",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AP3X-Dev/AP3X-Solana.git",
+    "directory": "packages/pumpfun-signals"
+  },
+  "homepage": "https://github.com/AP3X-Dev/AP3X-Solana/tree/main/packages/pumpfun-signals#readme",
+  "bugs": {
+    "url": "https://github.com/AP3X-Dev/AP3X-Solana/issues"
+  },
   "private": false,
   "description": "Interim sqlite-backed pump.fun signals API. Stable interface; storage backend is replaced in a later release. Consumers code against the interface, not the storage.",
   "type": "module",
@@ -14,7 +24,10 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
@@ -30,7 +43,9 @@
     "better-sqlite3": ">=9.0.0"
   },
   "peerDependenciesMeta": {
-    "better-sqlite3": { "optional": true }
+    "better-sqlite3": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "better-sqlite3": ">=9.0.0",

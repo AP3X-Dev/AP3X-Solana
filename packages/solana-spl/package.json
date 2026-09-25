@@ -1,6 +1,17 @@
 {
   "name": "@ap3x/solana-spl",
-  "version": "0.1.0",
+  "version": "0.4.0",
+  "description": "SPL Token and Token-2022 account parsing, associated token accounts and instructions.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AP3X-Dev/AP3X-Solana.git",
+    "directory": "packages/solana-spl"
+  },
+  "homepage": "https://github.com/AP3X-Dev/AP3X-Solana/tree/main/packages/solana-spl#readme",
+  "bugs": {
+    "url": "https://github.com/AP3X-Dev/AP3X-Solana/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

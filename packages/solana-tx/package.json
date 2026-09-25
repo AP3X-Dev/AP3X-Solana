@@ -1,6 +1,17 @@
 {
   "name": "@ap3x/solana-tx",
-  "version": "0.1.0",
+  "version": "0.4.0",
+  "description": "Versioned (v0) transaction assembly, PDAs, priority fees, compute budget and Jito bundles.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AP3X-Dev/AP3X-Solana.git",
+    "directory": "packages/solana-tx"
+  },
+  "homepage": "https://github.com/AP3X-Dev/AP3X-Solana/tree/main/packages/solana-tx#readme",
+  "bugs": {
+    "url": "https://github.com/AP3X-Dev/AP3X-Solana/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

@@ -1,6 +1,17 @@
 {
   "name": "@ap3x/solana-signals",
-  "version": "0.0.0",
+  "version": "0.4.0",
+  "description": "Solana signal sources (Geyser, historical, fixture), queue and signal bus.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AP3X-Dev/AP3X-Solana.git",
+    "directory": "packages/solana-signals"
+  },
+  "homepage": "https://github.com/AP3X-Dev/AP3X-Solana/tree/main/packages/solana-signals#readme",
+  "bugs": {
+    "url": "https://github.com/AP3X-Dev/AP3X-Solana/issues"
+  },
   "private": false,
   "type": "module",
   "main": "./dist/index.cjs",
@@ -13,7 +24,10 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

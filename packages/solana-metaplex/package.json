@@ -1,6 +1,17 @@
 {
   "name": "@ap3x/solana-metaplex",
-  "version": "0.1.0",
+  "version": "0.4.0",
+  "description": "Metaplex token metadata parsing and off-chain metadata resolution.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AP3X-Dev/AP3X-Solana.git",
+    "directory": "packages/solana-metaplex"
+  },
+  "homepage": "https://github.com/AP3X-Dev/AP3X-Solana/tree/main/packages/solana-metaplex#readme",
+  "bugs": {
+    "url": "https://github.com/AP3X-Dev/AP3X-Solana/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
