@@ -4,7 +4,7 @@ import type { RpcPool } from '@ap3x/solana-connectivity';
 import type { EventDecoderRegistry } from '@ap3x/solana-events';
 import { parseLogs } from '@ap3x/solana-events';
 import type { SignalSource } from '../source.js';
-import type { Signal } from '../signal.js';
+import { eventKind, type Signal } from '../signal.js';
 import { signalId } from '../signal-id.js';
 
 export interface HistoricalSignalSourceOpts {
@@ -94,7 +94,7 @@ export class HistoricalSignalSource extends EventEmitter implements SignalSource
               const rawChunk = findChunkByProgramId(transactionLog.chunks, ev.programId);
 
               const out: Signal = {
-                signalId: signalId({ signature: sig, programId, kind: ev.kind, logIndex }),
+                signalId: signalId({ signature: sig, programId, kind: eventKind(ev.data), logIndex }),
                 ts: blockTs,
                 slot,
                 signature: sig,
@@ -102,7 +102,7 @@ export class HistoricalSignalSource extends EventEmitter implements SignalSource
                 // Use the string 'decoded' as kind since DecodedEvent.kind === 'decoded'.
                 // Consumers interested in the vertical-specific event kind should
                 // inspect Signal.decoded directly.
-                kind: ev.kind,
+                kind: eventKind(ev.data),
                 decoded: ev.data,
                 raw: rawChunk ?? {
                   programId: ev.programId,

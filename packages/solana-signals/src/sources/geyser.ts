@@ -1,10 +1,10 @@
 import { EventEmitter } from 'node:events';
-import { PublicKey } from '@ap3x/solana-core';
+import { base58, PublicKey } from '@ap3x/solana-core';
 import type { GeyserClient, GeyserUpdate, SubscribeRequest } from '@ap3x/solana-connectivity';
 import type { EventDecoderRegistry } from '@ap3x/solana-events';
 import { parseLogs } from '@ap3x/solana-events';
 import type { SignalSource } from '../source.js';
-import type { Signal, GapEvent } from '../signal.js';
+import { eventKind, type Signal, type GapEvent } from '../signal.js';
 import { signalId } from '../signal-id.js';
 
 export interface GeyserSignalSourceOpts {
@@ -52,26 +52,36 @@ function extractTxUpdate(update: GeyserUpdate | GeyserTxUpdate): GeyserTxUpdate 
     return { slot: flat['slot'] as number, signature: flat['signature'] as string, logs: flat['logs'] as string[] };
   }
 
-  // Live Geyser proto path: update.transaction.transaction.{slot,meta,...}
+  // Live Yellowstone path (proto-loader, camelCase, bytes as Buffer):
+  //   update.transaction = SubscribeUpdateTransaction { slot, transaction: info }
+  //   info = { signature: bytes, transaction: { signatures: bytes[] }, meta: { logMessages } }
   const txEnvelope = flat['transaction'] as Record<string, unknown> | undefined;
   if (!txEnvelope) return undefined;
 
   const slot = Number(txEnvelope['slot']);
   if (!Number.isFinite(slot)) return undefined;
 
-  const txInner = txEnvelope['transaction'] as Record<string, unknown> | undefined;
-  const meta = txEnvelope['meta'] as Record<string, unknown> | undefined;
-
-  let sigs: string[] | undefined;
-  if (txInner && typeof txInner === 'object') {
-    sigs = (txInner['signatures'] ?? (txInner['transaction'] as Record<string, unknown> | undefined)?.['signatures']) as string[] | undefined;
-  }
-  const signature = Array.isArray(sigs) && typeof sigs[0] === 'string' ? sigs[0] : undefined;
+  const info = txEnvelope['transaction'] as Record<string, unknown> | undefined;
+  if (!info || typeof info !== 'object') return undefined;
+  const firstSig = (info['transaction'] as { signatures?: unknown[] } | undefined)?.signatures?.[0];
+  const signature = signatureString(info['signature'] ?? firstSig);
   if (!signature) return undefined;
 
-  const rawLogs = (meta?.['logMessages'] ?? []) as string[];
-  return { slot, signature, logs: rawLogs };
+  const logs = (info['meta'] as { logMessages?: unknown } | undefined)?.logMessages;
+  return {
+    slot,
+    signature,
+    logs: Array.isArray(logs) ? logs.filter((l): l is string => typeof l === 'string') : [],
+  };
 }
+
+/** Yellowstone ships signatures as raw bytes; fakes may pass base58 strings. */
+function signatureString(sig: unknown): string | undefined {
+  if (typeof sig === 'string') return sig;
+  if (sig instanceof Uint8Array && sig.length === 64) return base58.encode(sig);
+  return undefined;
+}
+
 
 /**
  * A {@link SignalSource} that wraps a live {@link GeyserClient} Yellowstone
@@ -144,12 +154,12 @@ export class GeyserSignalSource extends EventEmitter implements SignalSource {
             const rawChunk = findChunkByProgramId(transactionLog.chunks, ev.programId);
 
             const out: Signal = {
-              signalId: signalId({ signature: tx.signature, programId: programIdPk, kind: ev.kind, logIndex }),
+              signalId: signalId({ signature: tx.signature, programId: programIdPk, kind: eventKind(ev.data), logIndex }),
               ts: Date.now(),
               slot: tx.slot,
               signature: tx.signature,
               programId: programIdPk,
-              kind: ev.kind,
+              kind: eventKind(ev.data),
               decoded: ev.data,
               raw: rawChunk ?? {
                 programId: ev.programId,

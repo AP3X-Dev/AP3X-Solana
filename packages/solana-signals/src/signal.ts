@@ -25,3 +25,9 @@ export interface GapEvent {
   toSlot: number;
   reason: 'skip' | 'reorg' | 'source-restart';
 }
+
+/** A decoded event's own kind (e.g. `pumpfun.trade`), not the registry envelope's. */
+export function eventKind(data: unknown): string {
+  const kind = (data as { kind?: unknown } | null)?.kind;
+  return typeof kind === 'string' ? kind : 'decoded';
+}

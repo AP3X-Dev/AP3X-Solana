@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { PublicKey } from '@ap3x/solana-core';
+import { base58, PublicKey } from '@ap3x/solana-core';
 import { GeyserSignalSource } from './geyser.js';
 
 const programId = PublicKey.fromBase58('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
@@ -181,18 +181,22 @@ describe('GeyserSignalSource', () => {
 
   it('handles live Geyser proto-shaped update (txEnvelope path)', async () => {
     const client = new FakeGeyserClient();
+    // Yellowstone SubscribeUpdate as proto-loader delivers it: camelCase,
+    // u64 as string, bytes as Buffer.
+    const sigBytes = Buffer.alloc(64, 7);
     const protoUpdate = {
-      // Live proto shape: top-level 'transaction' envelope
       transaction: {
         slot: '400',
         transaction: {
-          signatures: ['sigProto'],
-        },
-        meta: {
-          logMessages: [
-            `Program ${programId.toBase58()} invoke [1]`,
-            `Program ${programId.toBase58()} success`,
-          ],
+          signature: sigBytes,
+          isVote: false,
+          transaction: { signatures: [sigBytes] },
+          meta: {
+            logMessages: [
+              `Program ${programId.toBase58()} invoke [1]`,
+              `Program ${programId.toBase58()} success`,
+            ],
+          },
         },
       },
     };
@@ -208,14 +212,15 @@ describe('GeyserSignalSource', () => {
       programIds: [programId],
     });
 
-    const got: string[] = [];
-    src.on('signal', (s) => got.push(s.signature));
+    const got: Array<{ signature: string; kind: string; slot: number }> = [];
+    src.on('signal', (s) => got.push({ signature: s.signature, kind: s.kind, slot: s.slot }));
 
     await src.start();
     await new Promise((r) => setTimeout(r, 30));
     await src.stop();
 
-    expect(got).toEqual(['sigProto']);
+    // Signature base58-encoded from the raw bytes; kind is the event's own.
+    expect(got).toEqual([{ signature: base58.encode(sigBytes), kind: 'spl.transfer', slot: 400 }]);
   });
 
   it('discards proto update with missing txEnvelope', async () => {
