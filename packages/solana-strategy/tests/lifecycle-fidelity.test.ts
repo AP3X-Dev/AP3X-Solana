@@ -3,14 +3,14 @@
  *
  * Gate 10 expanded: verify every hook fires in spec'd order, error propagation
  * is isolated, per-instance serialization holds under concurrent dispatch, and
- * the onBalanceChange hook can be defined without breaking the runtime.
+ * onBalanceChange receives observed balance deltas.
  *
  * Tests:
  *   3a: Register → push signals → trigger execution result → trigger position
  *       change → deregister. Assert hook phase sequence.
  *   3b: Strategy's onSignal throws → onError fires, runtime emits 'strategy-error'.
  *   3c: Concurrent dispatch serializes per instance (signal + tick interleave-free).
- *   3d: onBalanceChange defined but not wired — runtime does not crash.
+ *   3d: onBalanceChange fires with the observed delta.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -25,7 +25,7 @@ import { StrategyRuntime } from '../src/runtime.js';
 import type { SignalFilter } from '../src/filter.js';
 import type { StrategyContext } from '../src/context.js';
 import type { HookPhase, BalanceDelta } from '../src/strategy.js';
-import { makeRuntimeOpts, makeSignal, drainQueue, SYSTEM_PROGRAM } from './_helpers.js';
+import { makeRuntimeOpts, makeSignal, drainQueue, SYSTEM_PROGRAM, TOKEN_PROGRAM } from './_helpers.js';
 
 // ---------------------------------------------------------------------------
 // All-hooks strategy — logs every hook invocation as { phase, tsMs }
@@ -80,7 +80,6 @@ class AllHooksStrategy extends Strategy {
     this.record('onError');
   }
 
-  // onBalanceChange is defined but the runtime does not wire it (deferred to PRP-03)
   override async onBalanceChange(
     _wallet: string,
     _deltas: BalanceDelta[],
@@ -293,36 +292,55 @@ describe('gate 10 — test 3c: per-instance serialization under concurrent dispa
 // Test 3d — onBalanceChange defined without crashing the runtime
 // ---------------------------------------------------------------------------
 
-describe('gate 10 — test 3d: onBalanceChange does not crash runtime', () => {
-  it('strategy with onBalanceChange defined: register, push signals, deregister — no crash', async () => {
-    // onBalanceChange is not currently wired to any event in the runtime
-    // (deferred to PRP-03 when balance subscription is added). Defining the
-    // hook must not break registration, dispatch, or deregistration.
-
-    const { opts } = makeRuntimeOpts();
+describe('gate 10 — test 3d: onBalanceChange per observed delta', () => {
+  it('fires with the balance delta when a position of a wallet the instance trades with changes', async () => {
+    const { opts, portfolio } = makeRuntimeOpts();
     const runtime = new StrategyRuntime(opts);
-    const strategy = new AllHooksStrategy('balance-change-test', [{ kind: 'swap' }]);
+    const deltas: Array<{ wallet: string; delta: bigint; pre: bigint; post: bigint }> = [];
 
+    class TradingStrategy extends AllHooksStrategy {
+      override async onSignal(): Promise<null> {
+        this.record('onSignal');
+        return {
+          intentId: '',
+          wallet: 'main',
+          instructions: [],
+          feeTier: 'med' as const,
+          deadline: Date.now() + 30_000,
+        } as never;
+      }
+      override async onBalanceChange(wallet: string, ds: BalanceDelta[]): Promise<void> {
+        this.record('onBalanceChange');
+        for (const d of ds) deltas.push({ wallet, delta: d.delta, pre: d.preAmount, post: d.postAmount });
+      }
+    }
+    const strategy = new TradingStrategy('balance-change-test', [{ kind: 'swap' }]);
     await runtime.register(strategy);
     runtime.start();
 
+    // One decision resolves the 'main' wallet's address for this instance.
     await opts.signalQueue.push(makeSignal('swap', '3d-sig-1'));
-    await opts.signalQueue.push(makeSignal('swap', '3d-sig-2'));
     await drainQueue(opts.signalQueue);
+
+    const wallet = PublicKey.fromBase58(TOKEN_PROGRAM);
+    const mint = PublicKey.fromBytes(new Uint8Array(32).fill(9));
+    const lot = (amount: bigint) => ({ amount, costBasisLamports: 0n, acquiredSlot: 5, acquiredSig: 's', source: 'trade' as const });
+    const change: PositionChange = {
+      wallet,
+      mint,
+      before: { mint, walletAddress: wallet, lastUpdatedSlot: 4, lots: [lot(100n)] },
+      after: { mint, walletAddress: wallet, lastUpdatedSlot: 5, lots: [lot(100n), lot(50n)] },
+      reason: 'apply-landed-trade',
+    };
+    portfolio.emit('change', change);
+    // A change for a wallet the instance does not use is not delivered.
+    portfolio.emit('change', { ...change, wallet: PublicKey.fromBytes(new Uint8Array(32).fill(3)) });
+    await drainQueue(opts.signalQueue);
+    await new Promise((r) => setImmediate(r));
 
     await runtime.deregister('balance-change-test');
     runtime.stop();
 
-    // onBalanceChange was NOT called (not wired)
-    const balanceChangeCalls = strategy.log.filter((e) => e.phase === 'onBalanceChange');
-    expect(balanceChangeCalls).toHaveLength(0);
-
-    // onSignal WAS called
-    const signalCalls = strategy.log.filter((e) => e.phase === 'onSignal');
-    expect(signalCalls).toHaveLength(2);
-
-    // onShutdown fired on deregister
-    const shutdownCalls = strategy.log.filter((e) => e.phase === 'onShutdown');
-    expect(shutdownCalls).toHaveLength(1);
+    expect(deltas).toEqual([{ wallet: 'main', delta: 50n, pre: 100n, post: 150n }]);
   });
 });

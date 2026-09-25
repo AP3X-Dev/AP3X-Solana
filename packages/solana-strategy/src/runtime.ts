@@ -36,7 +36,7 @@ import type { PositionChange, LandedTrade } from '@ap3x/solana-portfolio';
 import type { PortfolioReadApi } from '@ap3x/solana-portfolio';
 import type { WalletHandle } from '@ap3x/solana-vault';
 
-import { Strategy, type HookPhase } from './strategy.js';
+import { Strategy, type BalanceDelta, type HookPhase } from './strategy.js';
 import { matchesAny } from './filter.js';
 import { InstanceQueue } from './instance-queue.js';
 import { intentId } from './intent-id.js';
@@ -385,11 +385,33 @@ export class StrategyRuntime extends EventEmitter {
   }
 
   private dispatchPositionChange(change: PositionChange): void {
+    const total = (p: PositionChange['before']) => (p ? p.lots.reduce((s, l) => s + l.amount, 0n) : 0n);
+    const preAmount = total(change.before);
+    const postAmount = total(change.after);
     for (const rec of this.instances.values()) {
-      if (rec.quarantined || !rec.strategy.onPositionChange) continue;
+      if (rec.quarantined) continue;
+      if (rec.strategy.onPositionChange) {
+        void rec.queue.enqueue(() =>
+          this.callHook(rec, 'onPositionChange', () =>
+            rec.strategy.onPositionChange!(change, rec.ctx),
+          ),
+        );
+      }
+      // Balance deltas go to instances trading with this wallet, under the
+      // wallet name they use.
+      if (!rec.strategy.onBalanceChange || postAmount === preAmount) continue;
+      const walletName = [...rec.walletAddresses].find(([, addr]) => addr.equals(change.wallet))?.[0];
+      if (walletName === undefined) continue;
+      const delta: BalanceDelta = {
+        mint: change.mint,
+        delta: postAmount - preAmount,
+        preAmount,
+        postAmount,
+        slot: change.after.lastUpdatedSlot,
+      };
       void rec.queue.enqueue(() =>
-        this.callHook(rec, 'onPositionChange', () =>
-          rec.strategy.onPositionChange!(change, rec.ctx),
+        this.callHook(rec, 'onBalanceChange', () =>
+          rec.strategy.onBalanceChange!(walletName, [delta], rec.ctx),
         ),
       );
     }

@@ -335,8 +335,12 @@ describe('runBacktest — intentToTrade provided', () => {
       fixtureSource: new FixtureSignalSource({ path: fixturePath }),
       clock,
       intentToTrade,
+      // Price: 5 lamports per base unit, scaled by 1e9.
+      finalPrices: new Map([[mint.toBase58(), 5_000_000_000n]]),
     });
 
+    // 400 tokens × 5 = 2_000 value, minus 4 × 1_000 basis.
+    expect(result.unrealizedPnl).toBe(-2_000n);
     // 4 swap signals (s1, s2, s3, s5) → 4 buys → 1 position with 4 lots
     expect(result.finalPositions).toHaveLength(1); // 1 mint, aggregated lots
     const pos = result.finalPositions[0] as { lots: Array<{ amount: bigint }> };
@@ -485,6 +489,46 @@ describe('runBacktest — intentToTrade provided', () => {
     expect(errorPhases).toContain('onSignal');
   });
 
+  it('reports drawdown and Sharpe across several round trips', async () => {
+    const mint = makeMintPk();
+    const signals: Signal[] = [
+      makeSignal('b1', 'swap', 300, 3001),
+      makeSignal('s1', 'swap', 301, 3002),
+      makeSignal('b2', 'swap', 302, 3003),
+      makeSignal('s2', 'swap', 303, 3004),
+    ];
+    const fixturePath = writeFixture('round-trips.jsonl.gz', signals);
+    // Buy 100 for 1_000, sell for 3_000 (+2_000); buy 100 for 1_000, sell for 500 (-500).
+    const flows = [-1_000n, 3_000n, -1_000n, 500n];
+    let n = 0;
+    const intentToTrade = (_intent: TradeIntent, result: ExecutionResult): LandedTrade[] => {
+      if (result.kind !== 'landed') return [];
+      const flow = flows[n++]!;
+      return [
+        {
+          signature: result.signature,
+          slot: result.slot,
+          wallet: PublicKey.fromBase58(SYSTEM_PROGRAM),
+          mint,
+          amountDelta: flow < 0n ? 100n : -100n,
+          solFlowLamports: flow,
+          feeLamports: 0n,
+          source: 'executor',
+        },
+      ];
+    };
+    const result = await runBacktest({
+      strategy: new AlwaysDecideStrategy(),
+      fixtureSource: new FixtureSignalSource({ path: fixturePath }),
+      clock: makeCounterClock(9000),
+      intentToTrade,
+    });
+    expect(result.pnlSeries.map((p) => p.cumulative)).toEqual([2_000n, 1_500n]);
+    expect(result.maxDrawdown).toBe(500n);
+    // mean 750, sample std ≈ 1767.8 → ≈ 0.424
+    expect(result.sharpe).toBeCloseTo(750 / Math.sqrt((1250 ** 2 + 1250 ** 2) / 1), 6);
+  });
+
   it('realizes PnL when intentToTrade produces a sell after a buy', async () => {
     const mint = makeMintPk();
     // Write exactly 2 signals: buy then sell
@@ -543,6 +587,10 @@ describe('runBacktest — intentToTrade provided', () => {
 
     // Should have realized PnL: proceeds(12_000) - costBasis(10_000) = 2_000
     expect(result.realizedPnl).toBe(2_000n);
+    expect(result.pnlSeries.map((p) => [p.realized, p.cumulative])).toEqual([[2_000n, 2_000n]]);
+    expect(result.maxDrawdown).toBe(0n);
+    expect(result.sharpe).toBeUndefined(); // one realized trade
+    expect(result.stateSnapshots).toEqual({});
     // Position lots should be empty after full sell
     expect(result.finalPositions).toHaveLength(1);
     const pos = result.finalPositions[0] as { lots: unknown[] };

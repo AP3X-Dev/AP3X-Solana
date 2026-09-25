@@ -34,6 +34,7 @@ import { SignalQueue } from '@ap3x/solana-signals';
 import type { FixtureSignalSource } from '@ap3x/solana-signals';
 import type { TradeIntent, ExecutionResult } from '@ap3x/solana-executor';
 import { reduceLots, unrealizedPnl } from '@ap3x/solana-portfolio';
+import type { RealizedPnlEvent } from '@ap3x/solana-portfolio';
 import type { LandedTrade, Position, PositionChange } from '@ap3x/solana-portfolio';
 import type { WalletHandle } from '@ap3x/solana-vault';
 
@@ -99,6 +100,12 @@ export interface BacktestOpts {
    * doesn't peek into opaque instructions.
    */
   intentToTrade?: (intent: TradeIntent, result: ExecutionResult) => LandedTrade[];
+  /**
+   * End-of-run prices (mint base58 → lamports per base unit × PRICE_SCALE)
+   * used to mark open positions for `unrealizedPnl`. Mints without a price
+   * are left out of it.
+   */
+  finalPrices?: Map<string, bigint>;
 }
 
 export interface BacktestResult {
@@ -112,6 +119,19 @@ export interface BacktestResult {
   lifecycleLog: Array<{ phase: string; tsMs: number; meta?: Record<string, unknown> }>;
   /** All positions at end of run. */
   finalPositions: unknown[];
+  /** Open positions marked at `opts.finalPrices` (0n when none are given). */
+  unrealizedPnl: bigint;
+  /** Every realized-PnL event, in order, with the running total. */
+  pnlSeries: Array<{ tsMs: number; slot: number; realized: bigint; cumulative: bigint }>;
+  /** Largest peak-to-trough fall of cumulative realized PnL. */
+  maxDrawdown: bigint;
+  /**
+   * Mean / standard deviation of per-trade realized PnL (not annualised).
+   * Undefined with fewer than two realized trades or zero variance.
+   */
+  sharpe?: number;
+  /** The strategy's state store contents at the end of the run. */
+  stateSnapshots: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +143,9 @@ class InMemoryStrategyStateStore implements StrategyStateStore {
   async get<T>(key: string): Promise<T | null> { return (this.m.get(key) as T) ?? null; }
   async set<T>(key: string, value: T): Promise<void> { this.m.set(key, value); }
   async delete(key: string): Promise<void> { this.m.delete(key); }
+  async snapshot(): Promise<Record<string, unknown>> {
+    return Object.fromEntries(this.m);
+  }
   async list(prefix?: string): Promise<string[]> {
     const keys = [...this.m.keys()];
     return prefix ? keys.filter((k) => k.startsWith(prefix)) : keys;
@@ -521,6 +544,12 @@ export async function runBacktest(opts: BacktestOpts): Promise<BacktestResult> {
 
   // 1. In-memory portfolio
   const portfolio = new InMemoryPortfolio();
+  const stateStore = new InMemoryStrategyStateStore();
+  const pnlSeries: BacktestResult['pnlSeries'] = [];
+  portfolio.on('realized-pnl', (e: Pick<RealizedPnlEvent, 'realized' | 'slot'>) => {
+    const cumulative = (pnlSeries.at(-1)?.cumulative ?? 0n) + e.realized;
+    pnlSeries.push({ tsMs: opts.clock(), slot: e.slot, realized: e.realized, cumulative });
+  });
 
   // 2. Simulated executor
   const executorCfg = opts.simulatedExecutor ?? {};
@@ -558,7 +587,7 @@ export async function runBacktest(opts: BacktestOpts): Promise<BacktestResult> {
     // 2_147_483_647 ms is the max safe 32-bit signed integer; setInterval stays
     // well below the overflow threshold (which Node re-clamps to 1ms).
     tickIntervalMs: 2_147_483_647,
-    stateStoreFactory: (_sn: string, _id: string) => new InMemoryStrategyStateStore(),
+    stateStoreFactory: (_sn: string, _id: string) => stateStore,
   });
 
   // 6. Wire executor → signalIdByIntent: the InstrumentedStrategy records
@@ -609,11 +638,40 @@ export async function runBacktest(opts: BacktestOpts): Promise<BacktestResult> {
   await runtime.deregister(instrumented.name);
 
   // 12. Build and return BacktestResult
+  const finalPositions = portfolio.allPositionsFlat();
+  const sharpe = sharpeRatio(pnlSeries.map((p) => p.realized));
   return {
     trades: capturedTrades,
     realizedPnl: portfolio.totalRealizedPnl(),
     decisionLog,
     lifecycleLog,
-    finalPositions: portfolio.allPositionsFlat(),
+    finalPositions,
+    unrealizedPnl: finalPositions.reduce((sum, p) => {
+      const price = opts.finalPrices?.get(p.mint.toBase58());
+      return price === undefined ? sum : sum + unrealizedPnl(p.lots, price);
+    }, 0n),
+    pnlSeries,
+    maxDrawdown: maxDrawdown(pnlSeries.map((p) => p.cumulative)),
+    ...(sharpe !== undefined ? { sharpe } : {}),
+    stateSnapshots: await stateStore.snapshot(),
   };
+}
+
+/** Largest fall from a running peak (starting at 0) of a cumulative series. */
+function maxDrawdown(cumulative: bigint[]): bigint {
+  let peak = 0n;
+  let worst = 0n;
+  for (const v of cumulative) {
+    if (v > peak) peak = v;
+    if (peak - v > worst) worst = peak - v;
+  }
+  return worst;
+}
+
+function sharpeRatio(returns: bigint[]): number | undefined {
+  if (returns.length < 2) return undefined;
+  const xs = returns.map(Number);
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const variance = xs.reduce((a, b) => a + (b - mean) ** 2, 0) / (xs.length - 1);
+  return variance === 0 ? undefined : mean / Math.sqrt(variance);
 }
