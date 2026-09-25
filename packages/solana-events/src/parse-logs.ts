@@ -43,8 +43,16 @@ export interface ProgramLogChunk {
   failureReason?: string;
   /** `Program log:` lines (with the prefix stripped). */
   logs: string[];
-  /** Decoded `Program data:` payloads — base64 decoded into raw bytes. */
+  /**
+   * Decoded `Program data:` payloads — base64 decoded into raw bytes. A line
+   * with several space-separated fields (`sol_log_data` with multiple
+   * slices) yields one payload: the slices concatenated.
+   */
   dataPayloads: Uint8Array[];
+  /** From `Program <id> consumed N of M compute units`. */
+  computeUnits?: { consumed: number; limit: number };
+  /** From `Program return: <id> <base64>`. */
+  returnData?: Uint8Array;
   /** Nested CPI chunks, in order of appearance. */
   children: ProgramLogChunk[];
   /**
@@ -71,6 +79,11 @@ export interface TransactionLog {
   chunks: ProgramLogChunk[];
   /** Lines that did not fit any recognized pattern. */
   parseErrors: LogParseError[];
+  /**
+   * True when the runtime cut the log short (`Log truncated`); later
+   * invocations and events are missing.
+   */
+  logTruncated: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +97,12 @@ const INVOKE_RE = /^Program ([1-9A-HJ-NP-Za-km-z]{32,44}) invoke \[(\d+)\]$/;
 const SUCCESS_RE = /^Program ([1-9A-HJ-NP-Za-km-z]{32,44}) success$/;
 const FAILED_RE = /^Program ([1-9A-HJ-NP-Za-km-z]{32,44}) failed: (.+)$/;
 const LOG_RE = /^Program log: (.*)$/;
-const DATA_RE = /^Program data: ([A-Za-z0-9+/=]+)$/;
+const DATA_RE = /^Program data: ([A-Za-z0-9+/=]+(?: [A-Za-z0-9+/=]+)*)$/;
+const CONSUMED_RE = /^Program ([1-9A-HJ-NP-Za-km-z]{32,44}) consumed (\d+) of (\d+) compute units$/;
+const RETURN_RE = /^Program return: ([1-9A-HJ-NP-Za-km-z]{32,44}) ([A-Za-z0-9+/=]*)$/;
+// Runtime bookkeeping with nothing to extract; kept in the raw trace.
+const CONSUMPTION_RE = /^Program consumption: \d+ units remaining$/;
+const LOG_TRUNCATED = 'Log truncated';
 
 /**
  * Decode a base64 string into raw bytes. Exposed as a standalone helper so
@@ -125,6 +143,7 @@ export function parseLogs(logs: string[]): TransactionLog {
   const roots: ProgramLogChunk[] = [];
   const stack: ProgramLogChunk[] = [];
   const parseErrors: LogParseError[] = [];
+  let logTruncated = false;
 
   const top = (): ProgramLogChunk | undefined => stack[stack.length - 1];
 
@@ -251,7 +270,14 @@ export function parseLogs(logs: string[]): TransactionLog {
         continue;
       }
       try {
-        current.dataPayloads.push(decodeBase64Data(dataMatch[1] as string));
+        const slices = (dataMatch[1] as string).split(' ').map(decodeBase64Data);
+        const joined = new Uint8Array(slices.reduce((n, b) => n + b.length, 0));
+        let at = 0;
+        for (const b of slices) {
+          joined.set(b, at);
+          at += b.length;
+        }
+        current.dataPayloads.push(joined);
         current.rawLines.push(line);
       } catch (e) {
         parseErrors.push({
@@ -260,6 +286,47 @@ export function parseLogs(logs: string[]): TransactionLog {
           reason: `invalid base64 in Program data: ${(e as Error).message}`,
         });
       }
+      continue;
+    }
+
+    const consumedMatch = line.match(CONSUMED_RE);
+    if (consumedMatch) {
+      const current = top();
+      if (current && current.programId === consumedMatch[1]) {
+        current.computeUnits = { consumed: Number(consumedMatch[2]), limit: Number(consumedMatch[3]) };
+        current.rawLines.push(line);
+      } else {
+        parseErrors.push({ lineIndex: i, line, reason: 'compute units line for a program that is not executing' });
+        current?.rawLines.push(line);
+      }
+      continue;
+    }
+
+    const returnMatch = line.match(RETURN_RE);
+    if (returnMatch) {
+      const current = top();
+      if (current && current.programId === returnMatch[1]) {
+        try {
+          current.returnData = decodeBase64Data(returnMatch[2] as string);
+        } catch (e) {
+          parseErrors.push({ lineIndex: i, line, reason: `invalid base64 in Program return: ${(e as Error).message}` });
+        }
+        current.rawLines.push(line);
+      } else {
+        parseErrors.push({ lineIndex: i, line, reason: 'return data for a program that is not executing' });
+        current?.rawLines.push(line);
+      }
+      continue;
+    }
+
+    if (CONSUMPTION_RE.test(line)) {
+      top()?.rawLines.push(line);
+      continue;
+    }
+
+    if (line === LOG_TRUNCATED) {
+      logTruncated = true;
+      top()?.rawLines.push(line);
       continue;
     }
 
@@ -285,5 +352,5 @@ export function parseLogs(logs: string[]): TransactionLog {
     current.failureReason = 'truncated';
   }
 
-  return { chunks: roots, parseErrors };
+  return { chunks: roots, parseErrors, logTruncated };
 }

@@ -190,7 +190,7 @@ describe('parseLogs', () => {
   });
 
   it('returns empty result for empty input', () => {
-    expect(parseLogs([])).toEqual({ chunks: [], parseErrors: [] });
+    expect(parseLogs([])).toEqual({ chunks: [], parseErrors: [], logTruncated: false });
   });
 
   it('marks truncated invocations as failed with reason=truncated', () => {
@@ -285,5 +285,73 @@ describe('decodeBase64Data', () => {
     const decoded = decodeBase64Data('QQ==');
     expect(decoded.length).toBe(1);
     expect(decoded[0]).toBe(0x41); // 'A'
+  });
+});
+
+describe('parseLogs — runtime bookkeeping lines', () => {
+  const AMM = 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA';
+  const FEES = 'pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ';
+  const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+
+  it('parses a real mainnet PumpSwap sell with no errors', () => {
+    // Captured from mainnet: compute-unit lines and return data appear in
+    // essentially every transaction.
+    const result = parseLogs([
+      `Program ${AMM} invoke [1]`,
+      `Program log: Instruction: Sell`,
+      `Program ${FEES} invoke [2]`,
+      `Program ${FEES} consumed 5688 of 335618 compute units`,
+      `Program return: ${FEES} GQAAAAAAAAAFAAAAAAAAAAAAAAAAAAAA`,
+      `Program ${FEES} success`,
+      `Program ${TOKEN_PROGRAM} invoke [2]`,
+      `Program log: Instruction: TransferChecked`,
+      `Program ${TOKEN_PROGRAM} consumed 105 of 323777 compute units`,
+      `Program ${TOKEN_PROGRAM} success`,
+      `Program data: Pi83CqUD3CoC77ZqAAAAAJbLAQAAAAAAObjXBwAAAAA=`,
+      `Program ${AMM} consumed 71845 of 371161 compute units`,
+      `Program ${AMM} success`,
+    ]);
+    expect(result.parseErrors).toEqual([]);
+    const amm = result.chunks[0]!;
+    expect(amm.computeUnits).toEqual({ consumed: 71845, limit: 371161 });
+    const fees = amm.children[0]!;
+    expect(fees.computeUnits).toEqual({ consumed: 5688, limit: 335618 });
+    expect([...fees.returnData!]).toEqual([...decodeBase64Data('GQAAAAAAAAAFAAAAAAAAAAAAAAAAAAAA')]);
+    expect(amm.dataPayloads).toHaveLength(1);
+  });
+
+  it('concatenates the slices of a multi-field Program data line', () => {
+    const result = parseLogs([`Program ${TOKEN} invoke [1]`, `Program data: AQI= AwQ=`, `Program ${TOKEN} success`]);
+    expect(result.parseErrors).toEqual([]);
+    expect([...result.chunks[0]!.dataPayloads[0]!]).toEqual([1, 2, 3, 4]);
+  });
+
+  it('accepts empty return data and the consumption line', () => {
+    const result = parseLogs([
+      `Program ${TOKEN} invoke [1]`,
+      `Program return: ${TOKEN} `,
+      `Program consumption: 1234 units remaining`,
+      `Program ${TOKEN} success`,
+    ]);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.chunks[0]!.returnData).toEqual(new Uint8Array());
+  });
+
+  it('flags compute or return lines for a program that is not executing', () => {
+    const result = parseLogs([
+      `Program ${TOKEN} invoke [1]`,
+      `Program ${ATA} consumed 1 of 2 compute units`,
+      `Program ${TOKEN} success`,
+    ]);
+    expect(result.parseErrors).toEqual([
+      expect.objectContaining({ lineIndex: 1, reason: 'compute units line for a program that is not executing' }),
+    ]);
+  });
+
+  it('reports a runtime-truncated log', () => {
+    const result = parseLogs([`Program ${TOKEN} invoke [1]`, 'Log truncated']);
+    expect(result.logTruncated).toBe(true);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.chunks[0]!.failureReason).toBe('truncated');
   });
 });
