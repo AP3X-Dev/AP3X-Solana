@@ -1,17 +1,15 @@
 // ---------------------------------------------------------------------------
 // GuardTracker — per-instance strategy guard state machine
 //
-// Enforces three categories of limits:
+// Enforces:
 //   • Decision rate   — maxDecisionsPerMin (rolling 60-second window)
 //   • Error rate      — errorThreshold (configurable window)
 //   • Daily P&L loss  — maxLossPerDayLamports (UTC calendar day)
+//   • Drawdown        — drawdownThreshold (peak-to-current cumulative realized PnL)
+//   • Open positions  — maxOpenPositions (count supplied by the runtime)
 //
-// NOTE: maxOpenPositions and drawdownThreshold are intentionally NOT enforced
-// here. Both require querying live portfolio state (position count, peak
-// equity) which lives outside this class. T42's StrategyRuntime reads those
-// config fields and checks them directly against the portfolio before or
-// after dispatching, using GuardTracker only for the three stateful counters
-// above.
+// The runtime feeds realized PnL and the open-position count after each
+// landed trade; a trip quarantines the instance.
 // ---------------------------------------------------------------------------
 
 export interface GuardConfig {
@@ -58,6 +56,8 @@ export class GuardTracker {
   private errorTimes: number[] = [];
   private realizedToday: bigint = 0n;
   private dayStartTs: number;
+  private cumulative: bigint = 0n;
+  private peak: bigint = 0n;
 
   constructor(
     private readonly cfg: GuardConfig,
@@ -114,11 +114,30 @@ export class GuardTracker {
       this.realizedToday = 0n;
     }
     this.realizedToday += amount;
+    this.cumulative += amount;
+    if (this.cumulative > this.peak) this.peak = this.cumulative;
     if (
       this.cfg.maxLossPerDayLamports !== undefined &&
       this.realizedToday < -this.cfg.maxLossPerDayLamports
     ) {
       return { guard: 'maxLossPerDayLamports', value: this.realizedToday };
+    }
+    // Drawdown: how far cumulative realized PnL has fallen from its peak.
+    const drawdown = this.peak - this.cumulative;
+    if (this.cfg.drawdownThreshold !== undefined && drawdown > this.cfg.drawdownThreshold) {
+      return { guard: 'drawdownThreshold', value: drawdown };
+    }
+    return null;
+  }
+
+  // -------------------------------------------------------------------------
+  // checkOpenPositions — trips when more positions are open than allowed
+  // -------------------------------------------------------------------------
+
+  checkOpenPositions(openCount: number): GuardTrip | null {
+    const max = this.cfg.maxOpenPositions;
+    if (max !== undefined && openCount > max) {
+      return { guard: 'maxOpenPositions', value: openCount };
     }
     return null;
   }

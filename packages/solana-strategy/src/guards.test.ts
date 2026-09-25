@@ -145,3 +145,30 @@ describe('GuardTracker.recordRealized', () => {
     expect(tracker.recordRealized(-100n)).toBeNull(); // cumulative 0n
   });
 });
+
+// ---------------------------------------------------------------------------
+// drawdownThreshold / maxOpenPositions
+// ---------------------------------------------------------------------------
+
+describe('GuardTracker drawdown', () => {
+  it('trips when cumulative realized PnL falls more than the threshold below its peak', () => {
+    const t = new GuardTracker({ drawdownThreshold: 100n }, () => utcMidnight('2025-01-01'));
+    expect(t.recordRealized(500n)).toBeNull(); // peak 500
+    expect(t.recordRealized(-100n)).toBeNull(); // drawdown 100 — at threshold
+    expect(t.recordRealized(-1n)).toEqual({ guard: 'drawdownThreshold', value: 101n });
+  });
+
+  it('measures from the running peak, not from zero', () => {
+    const t = new GuardTracker({ drawdownThreshold: 50n }, () => utcMidnight('2025-01-01'));
+    expect(t.recordRealized(-40n)).toBeNull(); // peak stays 0, drawdown 40
+    expect(t.recordRealized(-20n)).toEqual({ guard: 'drawdownThreshold', value: 60n });
+  });
+});
+
+describe('GuardTracker.checkOpenPositions', () => {
+  it('trips only above the limit, and never without one', () => {
+    expect(new GuardTracker({ maxOpenPositions: 2 }).checkOpenPositions(2)).toBeNull();
+    expect(new GuardTracker({ maxOpenPositions: 2 }).checkOpenPositions(3)).toEqual({ guard: 'maxOpenPositions', value: 3 });
+    expect(new GuardTracker({}).checkOpenPositions(1_000)).toBeNull();
+  });
+});

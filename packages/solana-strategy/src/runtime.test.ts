@@ -24,7 +24,7 @@ import { PublicKey } from '@ap3x/solana-core';
 import { SignalQueue } from '@ap3x/solana-signals';
 import type { Signal } from '@ap3x/solana-signals';
 import type { ExecutionResult, TradeIntent } from '@ap3x/solana-executor';
-import type { PositionChange, LandedTrade } from '@ap3x/solana-portfolio';
+import type { Position, PositionChange, LandedTrade } from '@ap3x/solana-portfolio';
 
 import { Strategy } from './strategy.js';
 import type { StrategyContext, StrategyStateStore } from './context.js';
@@ -82,7 +82,7 @@ class FakePortfolio extends EventEmitter implements PortfolioLike {
 
   // PortfolioReadApi stubs — satisfy widened PortfolioLike interface
   async getPosition(_wallet: PublicKey, _mint: PublicKey) { return null; }
-  async getAllPositions(_wallet: PublicKey) { return []; }
+  async getAllPositions(_wallet: PublicKey): Promise<Position[]> { return []; }
   async getRealizedPnl(_wallet: PublicKey, _mint: PublicKey) { return 0n; }
   async getUnrealizedPnl(_wallet: PublicKey, _mint: PublicKey, _currentPriceLamports: bigint) { return 0n; }
 }
@@ -515,6 +515,68 @@ describe('Test 6 — guard trip triggers quarantine', () => {
 
     // The third signal should be skipped (quarantined)
     expect(signalCount.length).toBe(2);
+  });
+});
+
+describe('portfolio-driven guards', () => {
+  const walletPk = PublicKey.fromBase58(TOKEN_PROGRAM);
+  const mintPk = PublicKey.fromBase58(TOKEN_2022);
+
+  // Landed tx whose token delta the adapter turns into one LandedTrade.
+  const landedRpc = {
+    call: vi.fn().mockResolvedValue({
+      slot: 200,
+      meta: {
+        fee: 5000,
+        preBalances: [1_000_000],
+        postBalances: [900_000],
+        preTokenBalances: [],
+        postTokenBalances: [{ accountIndex: 0, mint: mintPk.toBase58(), owner: walletPk.toBase58(), uiTokenAmount: { amount: '1000' } }],
+        err: null,
+      },
+      transaction: { message: { accountKeys: [walletPk.toBase58()], instructions: [] }, signatures: ['landed-sig'] },
+    }),
+  };
+
+  async function runOnce(portfolio: FakePortfolio, guards: NonNullable<StrategyRuntimeOpts['guards']>) {
+    const metricsEmitted: string[] = [];
+    const { opts, executor } = makeOpts({
+      rpcPool: landedRpc as never,
+      portfolio,
+      guards,
+      metrics: { emit: (topic: string) => { metricsEmitted.push(topic); } },
+    });
+    executor.submitResult = { kind: 'landed', intentId: 'x', signature: 'landed-sig', slot: 200, submitterUsed: 'rpc', landedAt: Date.now() };
+    const runtime = new StrategyRuntime(opts);
+    await runtime.register(new DecidingStrategy());
+    runtime.start();
+    await opts.signalQueue.push(makeSignal('swap', `g-${Math.random()}`));
+    await opts.signalQueue.drain();
+    for (let i = 0; i < 4; i++) await new Promise<void>((res) => setImmediate(res));
+    runtime.stop();
+    return metricsEmitted;
+  }
+
+  it('trips maxLossPerDayLamports from the realized PnL a trade produced', async () => {
+    const portfolio = new FakePortfolio();
+    let realized = 0n;
+    portfolio.getRealizedPnl = async () => realized;
+    const apply = portfolio.applyLandedTrade.bind(portfolio);
+    portfolio.applyLandedTrade = async (t) => { realized -= 2_000n; return apply(t); };
+    expect(await runOnce(portfolio, { maxLossPerDayLamports: 1_000n })).toContain('strategy.tripped');
+  });
+
+  it('trips maxOpenPositions after a trade leaves too many positions open', async () => {
+    const portfolio = new FakePortfolio();
+    const pos = (n: number) => ({
+      mint: PublicKey.fromBytes(new Uint8Array(32).fill(n)),
+      walletAddress: walletPk,
+      lastUpdatedSlot: 1,
+      lots: [{ amount: 1n, costBasisLamports: 0n, acquiredSlot: 1, acquiredSig: 's', source: 'trade' as const }],
+    });
+    portfolio.getAllPositions = async () => [pos(1), pos(2), { ...pos(3), lots: [] }];
+    expect(await runOnce(portfolio, { maxOpenPositions: 1 })).toContain('strategy.tripped');
+    expect(await runOnce(portfolio, { maxOpenPositions: 2 })).not.toContain('strategy.tripped');
   });
 });
 

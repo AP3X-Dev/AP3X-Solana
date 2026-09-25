@@ -354,7 +354,20 @@ export class StrategyRuntime extends EventEmitter {
         });
 
         for (const trade of trades) {
+          const realizedBefore = await this.opts.portfolio.getRealizedPnl(trade.wallet, trade.mint);
           await this.opts.portfolio.applyLandedTrade(trade);
+          const realizedAfter = await this.opts.portfolio.getRealizedPnl(trade.wallet, trade.mint);
+          const lossTrip = rec.guards.recordRealized(realizedAfter - realizedBefore);
+          if (lossTrip) {
+            void this.tripGuard(rec, lossTrip);
+            return;
+          }
+        }
+        if (trades.length > 0) {
+          const positions = await this.opts.portfolio.getAllPositions(walletAddress);
+          const open = positions.filter((p) => p.lots.some((l) => l.amount > 0n)).length;
+          const positionsTrip = rec.guards.checkOpenPositions(open);
+          if (positionsTrip) void this.tripGuard(rec, positionsTrip);
         }
       });
     }
