@@ -10,7 +10,7 @@
  *      of the token. Post-graduation swaps appear because the migration
  *      transaction itself lists the curve as an account, and many strategies
  *      poll for enough backfill to catch the boundary.
- *   2. For each signature, `getTransaction(sig, { maxSupportedTransactionVersion: 0 })`.
+ *   2. For each signature, `getTransaction(sig, { maxSupportedTransactionVersion: 1 })`.
  *   3. `parseLogs` + `bondingCurveDecoder.decode` / `pumpSwapDecoder.decode`
  *      to turn program log bytes into typed events.
  *   4. Filter to the trade-shaped events (`pumpfun.trade` on the curve,

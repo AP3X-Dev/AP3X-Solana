@@ -205,7 +205,7 @@ async function main(): Promise<void> {
       try {
         tx = await pool.call('getTransaction', [
           s.signature,
-          { maxSupportedTransactionVersion: 0, encoding: 'json' },
+          { maxSupportedTransactionVersion: 1, encoding: 'json' },
         ]);
       } catch (err) {
         console.error(`    getTransaction(${s.signature}) failed: ${(err as Error).message} — skipping`);

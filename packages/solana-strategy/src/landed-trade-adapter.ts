@@ -117,7 +117,7 @@ export async function adaptToLandedTrades(
 
   const raw = await opts.rpcPool.call('getTransaction', [
     result.signature,
-    { maxSupportedTransactionVersion: 0, encoding: 'json' },
+    { maxSupportedTransactionVersion: 1, encoding: 'json' },
   ]);
 
   if (!isSolanaTransactionResponse(raw) || raw.meta === null) return [];

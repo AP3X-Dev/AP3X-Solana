@@ -56,7 +56,7 @@ export async function confirmLanded(opts: ConfirmLandedOpts): Promise<ConfirmRes
       if (status.err) {
         const tx = (await opts.rpcPool.call('getTransaction', [
           opts.signature,
-          { maxSupportedTransactionVersion: 0 },
+          { maxSupportedTransactionVersion: 1 },
         ])) as TransactionResponse | null;
 
         return {

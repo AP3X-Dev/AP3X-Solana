@@ -65,7 +65,7 @@ export class HistoricalSignalSource extends EventEmitter implements SignalSource
           // logMessages without an additional `getTransaction` call per tx.
           const block = (await this.opts.rpcPool.call('getBlock', [
             slot,
-            { maxSupportedTransactionVersion: 0, encoding: 'json', transactionDetails: 'full' },
+            { maxSupportedTransactionVersion: 1, encoding: 'json', transactionDetails: 'full' },
           ])) as BlockResponse | null;
 
           if (!block?.transactions) continue;
