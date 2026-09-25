@@ -4,15 +4,15 @@
  * Usage (fixture replay):
  *   node dist/index.js --source fixture [--fixture-path <path.jsonl.gz>] [--max-events <N>]
  *
- * Usage (historical backfill — live wiring TBD, see backlog B8/B10):
+ * Usage (historical backfill):
  *   node dist/index.js --source historical --rpc <url> --from <slot> --to <slot>
  *
- * Usage (live Geyser — live wiring TBD, see backlog B8/B10):
+ * Usage (live Geyser, until SIGINT):
  *   node dist/index.js --source live --geyser <url>
  *
- * Only the fixture path is fully wired and tested in Task 17.
- * Historical and live paths are scaffolded with clear TODO comments pointing
- * at the backlog items that will wire them.
+ * The fixture path is covered by the e2e test. Historical and live are wired
+ * but only run against a real endpoint; set AP3X_GEYSER_TOKEN for a Geyser
+ * endpoint that needs a token.
  */
 
 import path from 'node:path';
@@ -25,7 +25,7 @@ import {
   SignalQueue,
 } from '@ap3x/solana-signals';
 import { EventDecoderRegistry } from '@ap3x/solana-events';
-import { RpcPool } from '@ap3x/solana-connectivity';
+import { GeyserClient, RpcPool } from '@ap3x/solana-connectivity';
 import {
   PUMPFUN_BONDING_CURVE_PROGRAM_ID,
   PUMPFUN_PUMPSWAP_PROGRAM_ID,
@@ -65,7 +65,8 @@ Usage:
 --source is required.
 --fixture-path defaults to the bundled fixture when --source fixture is used.
 Historical (--source historical) requires --rpc, --from, and --to.
-Live (--source live) requires --geyser and runs until SIGINT.
+Live (--source live) requires --geyser and runs until SIGINT. Set
+AP3X_GEYSER_TOKEN if the endpoint needs an auth token.
 `.trim();
 
 /**
@@ -174,9 +175,7 @@ async function buildSource(
     }
 
     case 'historical': {
-      // TODO (B8/B10): full historical wiring. The RpcPool is built here but
-      // the endpoint `name` field is constrained to a known union; use
-      // 'custom' for user-supplied URLs.
+      // User-supplied URLs use the 'custom' endpoint name.
       const rpcPool = new RpcPool({
         endpoints: [{ name: 'custom', url: args.rpc!, kind: 'http' }],
         strategy: 'roundRobinReads',
@@ -190,15 +189,17 @@ async function buildSource(
     }
 
     case 'live': {
-      // TODO (B8/B10): live Geyser wiring — gated on Helius Business credentials.
-      // GeyserClient requires @grpc/grpc-js + proto loader; the constructor is
-      // non-trivial. Scaffolded as a runtime error so the e2e fixture test still
-      // passes without real gRPC infrastructure.
-      throw new Error(
-        `Live mode (--source live) is not yet wired.\n` +
-        `This path is gated on Helius Business (backlog B8/B10).\n` +
-        `Use --source fixture for the e2e fixture replay test instead.`,
-      );
+      // Token, if the endpoint needs one, comes from the environment so it
+      // stays out of shell history.
+      const token = process.env['AP3X_GEYSER_TOKEN'];
+      const geyserClient = new GeyserClient({
+        endpoint: { url: args.geyser!, ...(token ? { token } : {}) },
+      });
+      return new GeyserSignalSource({
+        geyserClient,
+        decoderRegistry: registry,
+        programIds: [PUMPFUN_BONDING_CURVE_PROGRAM_ID, PUMPFUN_PUMPSWAP_PROGRAM_ID],
+      });
     }
   }
 }
@@ -257,12 +258,15 @@ async function main(): Promise<void> {
   await runtime.register(new WatcherStrategy(args.maxEvents));
   runtime.start();
 
-  // Wait for the source to finish (meaningful for fixture + historical).
-  // For the live path this would run until abort/SIGINT — that path is TBD (B8/B10).
+  // Fixture and historical sources end on their own; a live stream runs
+  // until SIGINT.
+  const ac = new AbortController();
+  process.once('SIGINT', () => ac.abort());
   await new Promise<void>((resolve, reject) => {
     source.once('end', resolve);
     source.once('error', reject);
-    source.start().catch(reject);
+    ac.signal.addEventListener('abort', () => resolve(), { once: true });
+    source.start(ac.signal).catch(reject);
   });
 
   // Drain the queue so all in-flight signals are processed before exit.

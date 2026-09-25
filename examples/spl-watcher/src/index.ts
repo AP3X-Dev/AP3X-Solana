@@ -4,21 +4,22 @@
  * Usage (fixture replay):
  *   node dist/index.js --fixture <path.jsonl.gz> --wallet <base58> [--wallet <base58> ...]
  *
- * Usage (historical backfill — live wiring TBD, see backlog B8/B10):
+ * Usage (historical backfill):
  *   node dist/index.js --rpc <url> --from <slot> --to <slot> --wallet <base58>
  *
- * Usage (live Geyser — live wiring TBD, see backlog B8/B10):
+ * Usage (live Geyser, until SIGINT):
  *   node dist/index.js --geyser <url> --wallet <base58>
  *
- * Only the fixture path is fully wired and tested in Phase E (T47).
- * Historical and Geyser paths are scaffolded with clear TODO comments.
+ * The fixture path is covered by the e2e test. Historical and Geyser are wired
+ * but only run against a real endpoint; set AP3X_GEYSER_TOKEN for a Geyser
+ * endpoint that needs a token.
  */
 
 import { FixtureSignalSource, HistoricalSignalSource, GeyserSignalSource, SignalQueue } from '@ap3x/solana-signals';
 import { EventDecoderRegistry } from '@ap3x/solana-events';
 import { SPL_TOKEN_PROGRAM_ID, parseTransferLog } from '@ap3x/solana-spl';
 import { PublicKey } from '@ap3x/solana-core';
-import { RpcPool } from '@ap3x/solana-connectivity';
+import { GeyserClient, RpcPool } from '@ap3x/solana-connectivity';
 import { StrategyRuntime } from '@ap3x/solana-strategy';
 import type { ExecutorLike, PortfolioLike, RpcPoolLike } from '@ap3x/solana-strategy';
 import { WatcherStrategy } from './watcher-strategy.js';
@@ -46,7 +47,8 @@ Usage:
 
 Exactly one of --fixture / --rpc / --geyser is required.
 Historical (--rpc) requires --from and --to slot bounds.
-Geyser (--geyser) runs until SIGINT.
+Geyser (--geyser) runs until SIGINT. Set AP3X_GEYSER_TOKEN if the endpoint
+needs an auth token.
 At least one --wallet is recommended (program emits nothing otherwise).
 `.trim();
 
@@ -165,9 +167,7 @@ async function buildSource(
     }
 
     case 'historical': {
-      // TODO (B8/B10): full historical wiring. The RpcPool is built here but
-      // the endpoint `name` field is constrained to a known union; use 'custom'
-      // for user-supplied URLs.
+      // User-supplied URLs use the 'custom' endpoint name.
       const rpcPool = new RpcPool({
         endpoints: [{ name: 'custom', url: args.rpc!, kind: 'http' }],
         strategy: 'roundRobinReads',
@@ -181,15 +181,17 @@ async function buildSource(
     }
 
     case 'geyser': {
-      // TODO (B8/B10): live Geyser wiring — gated on Helius Business credentials.
-      // GeyserClient requires @grpc/grpc-js + proto loader; the constructor is
-      // non-trivial. Scaffolded as a runtime error so the e2e fixture test still
-      // passes without real gRPC infrastructure.
-      throw new Error(
-        `Geyser live mode is not yet wired in Phase E.\n` +
-        `This path is gated on Helius Business (backlog B8/B10).\n` +
-        `Use --fixture for the e2e fixture replay test instead.`,
-      );
+      // Token, if the endpoint needs one, comes from the environment so it
+      // stays out of shell history.
+      const token = process.env['AP3X_GEYSER_TOKEN'];
+      const geyserClient = new GeyserClient({
+        endpoint: { url: args.geyser!, ...(token ? { token } : {}) },
+      });
+      return new GeyserSignalSource({
+        geyserClient,
+        decoderRegistry: registry,
+        programIds: [SPL_TOKEN_PROGRAM_ID],
+      });
     }
   }
 }
@@ -247,12 +249,15 @@ async function main(): Promise<void> {
   await runtime.register(new WatcherStrategy(args.wallets));
   runtime.start();
 
-  // Wait for the source to finish (meaningful for fixture + historical).
-  // For geyser this would run until abort/SIGINT — that path is TBD (B8/B10).
+  // Fixture and historical sources end on their own; a live stream runs
+  // until SIGINT.
+  const ac = new AbortController();
+  process.once('SIGINT', () => ac.abort());
   await new Promise<void>((resolve, reject) => {
     source.once('end', resolve);
     source.once('error', reject);
-    source.start().catch(reject);
+    ac.signal.addEventListener('abort', () => resolve(), { once: true });
+    source.start(ac.signal).catch(reject);
   });
 
   // Drain the queue so all in-flight signals are processed before exit.
