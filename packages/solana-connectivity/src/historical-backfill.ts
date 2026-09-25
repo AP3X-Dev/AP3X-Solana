@@ -11,10 +11,9 @@
  *     pages via the `before: <last-sig>` cursor. Stops when a page is
  *     short (< limit) or a configurable `maxPages` cap is reached.
  *   - `getTransaction(sig, opts)` — single-call wrapper. Defaults
- *     `maxSupportedTransactionVersion: 0` because v0 is the only supported
- *     transaction format in this stack — omitting it silently downgrades
- *     the response to a legacy-only envelope we deliberately do not
- *     support. v0 / versioned is a project-wide rule (CLAUDE.md).
+ *     `maxSupportedTransactionVersion: 1`: omitting it downgrades the
+ *     response to a legacy-only envelope, and mainnet now carries v1
+ *     transactions, which the node rejects outright under a lower cap.
  *   - `getBlocks(from, to)` — chunks long ranges into 1000-slot windows,
  *     concatenates results, returns a flat `number[]` of block slot
  *     numbers. 1000 is the documented Solana `getBlocks` upper bound; a
@@ -251,8 +250,8 @@ export class RpcHistoricalBackfill {
     const params: unknown[] = [
       signature,
       stripUndefined({
-        // Default to v0 — see type doc-comment for why.
-        maxSupportedTransactionVersion: opts.maxSupportedTransactionVersion ?? 0,
+        // Default to v1 — see the file doc-comment for why.
+        maxSupportedTransactionVersion: opts.maxSupportedTransactionVersion ?? 1,
         encoding: opts.encoding,
         commitment: opts.commitment,
       }),
@@ -294,37 +293,61 @@ export class RpcHistoricalBackfill {
     const { fromSlot, toSlot } = range;
     if (toSlot < fromSlot) return;
 
-    const slots = await this.getBlocks(fromSlot, toSlot);
-    for (const slot of slots) {
-      // One page per block. Pin the query to this slot with `minContextSlot`
-      // so the node answers in-range, not "latest". 1000 signatures in a
-      // single block for a single program is already extreme; we don't
-      // paginate further here because the block's signature list is the
-      // finite ground truth.
-      const sigs = await this.getSignaturesForAddress(programId, {
-        limit: 1000,
-        minContextSlot: slot,
-      });
-      for (const sigInfo of sigs) {
-        const tx = await this.getTransaction(sigInfo.signature);
-        if (tx === null || tx === undefined) continue;
-        let results: EventDecodeResult[];
-        try {
-          const produced = decoder(tx);
-          results = Array.isArray(produced) ? produced : [produced];
-        } catch (err) {
-          results = [
-            {
-              kind: 'unknown',
-              slot: sigInfo.slot,
-              signature: sigInfo.signature,
-              programId,
-              reason: err instanceof Error ? err.message : String(err),
-            },
-          ];
-        }
-        for (const ev of results) yield ev;
+    // getSignaturesForAddress has no slot filter (`minContextSlot` only sets
+    // how far the node must have caught up), so walk the program's history
+    // newest-first and keep the range. Suited to recent ranges such as a
+    // live stream's gap; the walk starts at the chain tip.
+    const inRange: SignatureInfo[] = [];
+    for await (const sig of this.iterateSignaturesForAddress(programId)) {
+      if (sig.slot > toSlot) continue;
+      if (sig.slot < fromSlot) break;
+      inRange.push(sig);
+    }
+    for (const sigInfo of inRange.reverse()) {
+      if (sigInfo.err) continue;
+      const tx = await this.getTransaction(sigInfo.signature);
+      if (tx === null || tx === undefined) continue;
+      let results: EventDecodeResult[];
+      try {
+        const produced = decoder(tx);
+        results = Array.isArray(produced) ? produced : [produced];
+      } catch (err) {
+        results = [
+          {
+            kind: 'unknown',
+            slot: sigInfo.slot,
+            signature: sigInfo.signature,
+            programId,
+            reason: err instanceof Error ? err.message : String(err),
+          },
+        ];
       }
+      for (const ev of results) yield ev;
     }
   }
+}
+
+export interface GapBackfillOpts {
+  backfill: RpcHistoricalBackfill;
+  /** Programs whose transactions the live stream subscribes to. */
+  programIds: string[];
+  decoder: TransactionDecoder;
+  /** Receives each recovered event, oldest first per program. */
+  deliver: (event: EventDecodeResult) => void | Promise<void>;
+}
+
+/**
+ * An `onGap(from, to)` handler for {@link GeyserClient}: refetches the
+ * subscribed programs' transactions for the missing slots (`from` inclusive
+ * to `to` exclusive — the slot just seen was delivered live) and hands each
+ * decoded event to `deliver`.
+ */
+export function gapBackfill(opts: GapBackfillOpts): (from: number, to: number) => Promise<void> {
+  return async (from, to) => {
+    for (const programId of opts.programIds) {
+      for await (const ev of opts.backfill.fetchEventsForProgram(programId, { fromSlot: from, toSlot: to - 1 }, opts.decoder)) {
+        await opts.deliver(ev);
+      }
+    }
+  };
 }

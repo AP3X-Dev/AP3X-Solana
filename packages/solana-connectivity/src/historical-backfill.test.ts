@@ -18,6 +18,7 @@ import { describe, it, expect, vi } from 'vitest';
 import type { RpcPool } from './rpc-pool';
 import {
   RpcHistoricalBackfill,
+  gapBackfill,
   type DecodedEvent,
   type EventDecodeResult,
   type TransactionDecoder,
@@ -183,7 +184,7 @@ describe('RpcHistoricalBackfill.getTransaction', () => {
     const tx = await backfill.getTransaction('sigA');
     expect(call).toHaveBeenCalledWith('getTransaction', [
       'sigA',
-      { maxSupportedTransactionVersion: 0 },
+      { maxSupportedTransactionVersion: 1 },
     ]);
     expect(tx).toMatchObject({ slot: 100 });
   });
@@ -403,6 +404,31 @@ describe('RpcHistoricalBackfill.fetchEventsForProgram', () => {
     expect(events[2]).toMatchObject({ kind: 'decoded', signature: 's12' });
   });
 
+  it('only fetches transactions inside the range, oldest first', async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    const pool = mkProgramPool(
+      {
+        blocks: [],
+        sigsByBlock: { 8: ['s8'], 10: ['s10'], 11: ['s11a', 's11b'], 13: ['s13'] },
+        tx: (sig) => ({ sig }),
+      },
+      calls,
+    );
+    const backfill = new RpcHistoricalBackfill(pool);
+    const seen: string[] = [];
+    for await (const ev of backfill.fetchEventsForProgram(PROGRAM_ID, { fromSlot: 10, toSlot: 12 }, (tx) => {
+      seen.push((tx as { sig: string }).sig);
+      return { kind: 'decoded', slot: 0, signature: '', programId: PROGRAM_ID, data: null };
+    })) {
+      void ev;
+    }
+    // Within slot 11 the node lists s11a as newer, so oldest-first is s11b, s11a.
+    expect(seen).toEqual(['s10', 's11b', 's11a']);
+    const fetched = calls.filter((c) => c.method === 'getTransaction').map((c) => (c.params as string[])[0]);
+    expect(fetched).not.toContain('s8');
+    expect(fetched).not.toContain('s13');
+  });
+
   it('yields nothing for an empty slot range', async () => {
     const pool = mkProgramPool({
       blocks: [],
@@ -522,11 +548,14 @@ function mkProgramPool(
       return spec.blocks.filter((b) => b >= from && b <= to);
     }
     if (method === 'getSignaturesForAddress') {
-      const [, opts] = params as [string, { minContextSlot?: number }];
-      const slot = opts?.minContextSlot;
-      if (slot === undefined) return [];
-      const sigs = spec.sigsByBlock[slot] ?? [];
-      return sigs.map((signature) => ({ signature, slot }));
+      // Like a real node: the program's signatures newest-first, paged by
+      // `before`/`limit`. There is no slot filter.
+      const [, opts] = params as [string, { before?: string; limit?: number }];
+      const all = Object.entries(spec.sigsByBlock)
+        .flatMap(([slot, sigs]) => sigs.map((signature) => ({ signature, slot: Number(slot) })))
+        .sort((x, y) => y.slot - x.slot);
+      const start = opts?.before ? all.findIndex((s) => s.signature === opts.before) + 1 : 0;
+      return all.slice(start, start + (opts?.limit ?? 1000));
     }
     if (method === 'getTransaction') {
       const [sig] = params as [string];
@@ -536,3 +565,25 @@ function mkProgramPool(
   };
   return { call: vi.fn(impl) } as unknown as RpcPool;
 }
+
+describe('gapBackfill', () => {
+  it('backfills the missing slots for each program and delivers the events', async () => {
+    const pool = mkProgramPool({
+      blocks: [],
+      sigsByBlock: { 100: ['live'], 98: ['g98'], 99: ['g99'], 97: ['before'] },
+      tx: (sig) => ({ sig }),
+    });
+    const delivered: string[] = [];
+    const onGap = gapBackfill({
+      backfill: new RpcHistoricalBackfill(pool),
+      programIds: [PROGRAM_ID],
+      decoder: (tx) => ({ kind: 'decoded', slot: 0, signature: (tx as { sig: string }).sig, programId: PROGRAM_ID, data: null }),
+      deliver: (ev) => {
+        delivered.push(ev.signature);
+      },
+    });
+    // Live stream saw slot 97, then 100: slots 98 and 99 are missing.
+    await onGap(98, 100);
+    expect(delivered).toEqual(['g98', 'g99']);
+  });
+});

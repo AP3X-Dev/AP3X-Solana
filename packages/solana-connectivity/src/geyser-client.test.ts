@@ -226,6 +226,36 @@ describe('GeyserClient — request and lifecycle', () => {
     expect(closed).toHaveBeenCalledTimes(1);
   });
 
+  it('aborting the signal closes the subscription', async () => {
+    const { adapter, client } = mkFakeAdapter();
+    const geyser = new GeyserClient({ endpoint: ENDPOINT, grpc: adapter });
+    const ac = new AbortController();
+    const seen: GeyserUpdate[] = [];
+    const sub = geyser.subscribe({}, (u) => { seen.push(u); }, { signal: ac.signal });
+    const closed = vi.fn();
+    sub.on('closed', closed);
+    client.stream.pushData(slotUpdate(1));
+    await waitUntil(() => seen.length === 1);
+    ac.abort();
+    await waitUntil(() => closed.mock.calls.length === 1);
+    expect(client.stream.cancelled).toBe(true);
+    client.stream.pushData(slotUpdate(2));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(seen).toHaveLength(1);
+  });
+
+  it('an already-aborted signal never opens a stream', async () => {
+    const { adapter, client } = mkFakeAdapter();
+    const geyser = new GeyserClient({ endpoint: ENDPOINT, grpc: adapter });
+    const ac = new AbortController();
+    ac.abort();
+    const sub = geyser.subscribe({}, () => {}, { signal: ac.signal });
+    const closed = vi.fn();
+    sub.on('closed', closed);
+    await waitUntil(() => closed.mock.calls.length === 1);
+    expect(client.stream.writes).toHaveLength(0);
+  });
+
   it('ignores data after close()', async () => {
     const { adapter, client } = mkFakeAdapter();
     const geyser = new GeyserClient({ endpoint: ENDPOINT, grpc: adapter });

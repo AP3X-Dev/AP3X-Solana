@@ -28,7 +28,7 @@ export type {
 export type { Checkpoint, CheckpointStore } from './checkpoint-store';
 export { FileCheckpointStore } from './checkpoint-store-file';
 export type { FileCheckpointStoreOptions } from './checkpoint-store-file';
-export { RpcHistoricalBackfill } from './historical-backfill';
+export { RpcHistoricalBackfill, gapBackfill } from './historical-backfill';
 export type {
   DecodedEvent,
   UnknownEventDecode,
@@ -40,4 +40,5 @@ export type {
   SignatureInfo,
   SlotRange,
   Commitment,
+  GapBackfillOpts,
 } from './historical-backfill';

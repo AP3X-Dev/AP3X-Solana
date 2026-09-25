@@ -390,10 +390,14 @@ export class GeyserClient {
    *
    * `handler(update)` is invoked sequentially with backpressure: the client
    * awaits the handler before taking the next update off the queue.
+   *
+   * `opts.signal` closes the subscription when aborted (an already-aborted
+   * signal closes it immediately).
    */
   subscribe(
     req: SubscribeRequest,
     handler: (update: GeyserUpdate) => void | Promise<void>,
+    opts: { signal?: AbortSignal } = {},
   ): Subscription {
     const sub = new SubscriptionImpl(
       this.#endpoint,
@@ -408,7 +412,17 @@ export class GeyserClient {
       this.#onGap,
       this.#now,
     );
+    const { signal } = opts;
+    if (signal?.aborted) {
+      sub.close();
+      return sub;
+    }
     sub.start();
+    if (signal) {
+      const onAbort = () => sub.close();
+      signal.addEventListener('abort', onAbort, { once: true });
+      sub.once('closed', () => signal.removeEventListener('abort', onAbort));
+    }
     return sub;
   }
 }
