@@ -27,7 +27,7 @@ export interface CreateParams {
 export interface BondingCurveTradeAccounts {
   mint: PublicKey;
   user: PublicKey;
-  /** One of `Global.fee_recipients` (see `globalState`). */
+  /** Fee recipient accepted for this coin — see `feeRecipientFor` (mayhem-mode coins need a reserved one). */
   feeRecipient: PublicKey;
   /** `BondingCurve.creator` (see `curveState`); seeds the creator vault. */
   creator: PublicKey;
@@ -78,7 +78,7 @@ export interface PumpSwapPoolAccounts {
 export interface PumpSwapTradeAccounts {
   pool: PumpSwapPoolAccounts;
   user: PublicKey;
-  /** One of `GlobalConfig.protocol_fee_recipients` (see `pumpSwapGlobalConfig`). */
+  /** Protocol fee recipient accepted for this pool — see `protocolFeeRecipientFor`. */
   protocolFeeRecipient: PublicKey;
   /** One of `GlobalConfig.buyback_fee_recipients`. Required since the April 2026 upgrade. */
   buybackFeeRecipient: PublicKey;

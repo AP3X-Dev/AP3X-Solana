@@ -73,6 +73,8 @@ export interface PumpSwapPool {
   /** Creator credited with creator fees; seeds the coin creator vault. */
   coinCreator: PublicKey;
   isCashbackCoin: boolean;
+  /** Mayhem-mode pools must pay the reserved fee recipients. */
+  isMayhemMode: boolean;
 }
 
 export interface PumpSwapPoolState extends PumpSwapPool {
@@ -109,6 +111,7 @@ export function decodePumpSwapPool(bytes: Uint8Array, pool: PublicKey): PumpSwap
     lpSupply: f['lpSupply'] as bigint,
     coinCreator: f['coinCreator'] as PublicKey,
     isCashbackCoin: (f['isCashbackCoin'] as boolean | undefined) ?? false,
+    isMayhemMode: (f['isMayhemMode'] as boolean | undefined) ?? false,
   };
 }
 
@@ -137,6 +140,8 @@ export interface PumpSwapGlobalConfig {
   coinCreatorFeeBasisPoints: bigint;
   /** Accepted protocol fee recipients (zero keys removed). */
   protocolFeeRecipients: PublicKey[];
+  /** Protocol fee recipients for mayhem-mode pools (zero keys removed). */
+  reservedFeeRecipients: PublicKey[];
   /** Accepted buyback fee recipients (zero keys removed). */
   buybackFeeRecipients: PublicKey[];
 }
@@ -149,8 +154,22 @@ export function decodePumpSwapGlobalConfig(bytes: Uint8Array): PumpSwapGlobalCon
     protocolFeeBasisPoints: f['protocolFeeBasisPoints'] as bigint,
     coinCreatorFeeBasisPoints: (f['coinCreatorFeeBasisPoints'] as bigint | undefined) ?? 0n,
     protocolFeeRecipients: (f['protocolFeeRecipients'] as PublicKey[]).filter((k) => !k.equals(zero)),
+    reservedFeeRecipients: [
+      ...(f['reservedFeeRecipient'] ? [f['reservedFeeRecipient'] as PublicKey] : []),
+      ...((f['reservedFeeRecipients'] as PublicKey[] | undefined) ?? []),
+    ].filter((k) => !k.equals(zero)),
     buybackFeeRecipients: ((f['buybackFeeRecipients'] as PublicKey[] | undefined) ?? []).filter((k) => !k.equals(zero)),
   };
+}
+
+/** The protocol fee recipient a trade on `pool` must pay (reserved for mayhem-mode pools). */
+export function protocolFeeRecipientFor(
+  config: PumpSwapGlobalConfig,
+  pool: Pick<PumpSwapPool, 'isMayhemMode'>,
+): PublicKey {
+  const r = pool.isMayhemMode ? config.reservedFeeRecipients[0] : config.protocolFeeRecipients[0];
+  if (!r) throw new Error('PumpSwap GlobalConfig has no protocol fee recipient for this pool');
+  return r;
 }
 
 export async function pumpSwapGlobalConfig(rpcPool: RpcPool): Promise<PumpSwapGlobalConfig> {

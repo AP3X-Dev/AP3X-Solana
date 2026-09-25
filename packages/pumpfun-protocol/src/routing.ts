@@ -21,8 +21,13 @@ import type { RpcPool } from '@ap3x/solana-connectivity';
 import type { Instruction } from '@ap3x/solana-tx';
 import { buildBuyExactSolIn, buildSell } from './instructions/bonding-curve.js';
 import { buildPumpSwapBuyExactQuoteIn, buildPumpSwapSell } from './instructions/pumpswap.js';
-import { curveState, globalState } from './curve/state.js';
-import { derivePumpSwapPoolPda, pumpSwapGlobalConfig, pumpSwapPoolState } from './pumpswap/pool-state.js';
+import { curveState, feeRecipientFor, globalState } from './curve/state.js';
+import {
+  derivePumpSwapPoolPda,
+  protocolFeeRecipientFor,
+  pumpSwapGlobalConfig,
+  pumpSwapPoolState,
+} from './pumpswap/pool-state.js';
 
 export interface UnifiedBuyParams {
   user: PublicKey;
@@ -60,11 +65,9 @@ async function pumpSwapContext(rpcPool: RpcPool, mint: PublicKey) {
     pumpSwapPoolState(rpcPool, derivePumpSwapPoolPda(mint).address),
     pumpSwapGlobalConfig(rpcPool),
   ]);
-  const protocolFeeRecipient = config.protocolFeeRecipients[0];
+  const protocolFeeRecipient = protocolFeeRecipientFor(config, pool);
   const buybackFeeRecipient = config.buybackFeeRecipients[0];
-  if (!protocolFeeRecipient || !buybackFeeRecipient) {
-    throw new Error('PumpSwap GlobalConfig is missing a protocol or buyback fee recipient');
-  }
+  if (!buybackFeeRecipient) throw new Error('PumpSwap GlobalConfig has no buyback fee recipient');
   return { pool, protocolFeeRecipient, buybackFeeRecipient };
 }
 
@@ -75,7 +78,7 @@ export async function buy(rpcPool: RpcPool, mint: PublicKey, params: UnifiedBuyP
     return buildBuyExactSolIn({
       mint,
       user: params.user,
-      feeRecipient: global.feeRecipient,
+      feeRecipient: feeRecipientFor(global, state),
       creator: state.creator,
       buybackFeeRecipient: buybackRecipient(global),
       spendableSolIn: params.solIn,
@@ -105,7 +108,7 @@ export async function sell(rpcPool: RpcPool, mint: PublicKey, params: UnifiedSel
     return buildSell({
       mint,
       user: params.user,
-      feeRecipient: global.feeRecipient,
+      feeRecipient: feeRecipientFor(global, state),
       creator: state.creator,
       buybackFeeRecipient: buybackRecipient(global),
       amount: params.tokenAmount,

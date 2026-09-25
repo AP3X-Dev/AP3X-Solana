@@ -116,6 +116,23 @@ describe('bonding-curve builders reproduce real mainnet instructions', () => {
   });
 });
 
+describe('builders accept program-owned (off-curve) users', () => {
+  it('derives the default token account for a PDA user', () => {
+    const f = fixture('pump', 'buy_exact_sol_in');
+    const pda = pk('BwWK17cbHxwWBKZkUYvzxLcNQ1YVyaFezduWbtm2de6s'); // a real off-curve trader
+    const ix = buildBuyExactSolIn({
+      mint: pk(f.accounts[2]!),
+      user: pda,
+      feeRecipient: pk(f.accounts[1]!),
+      creator: pk(f.accounts[0]!),
+      buybackFeeRecipient: pk(f.accounts[f.accounts.length - 1]!),
+      spendableSolIn: 1n,
+      minTokensOut: 0n,
+    });
+    expect(ix.keys[6]!.pubkey.equals(pda)).toBe(true);
+  });
+});
+
 describe('PumpSwap builders reproduce real mainnet instructions', () => {
   const inputs = (f: Fixture) => {
     const a = f.accounts;

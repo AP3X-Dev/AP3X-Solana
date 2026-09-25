@@ -24,7 +24,7 @@ function tradeAccounts(p: BondingCurveTradeAccounts): Record<string, PublicKey> 
     user: p.user,
     fee_recipient: p.feeRecipient,
     token_program: tokenProgram,
-    associated_user: p.userTokenAccount ?? getAssociatedTokenAddress(p.mint, p.user, false, tokenProgram),
+    associated_user: p.userTokenAccount ?? getAssociatedTokenAddress(p.mint, p.user, true, tokenProgram),
     'bonding_curve.creator': p.creator,
   };
 }

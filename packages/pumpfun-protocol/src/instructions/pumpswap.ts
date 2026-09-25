@@ -28,9 +28,9 @@ function tradeAccounts(p: PumpSwapTradeAccounts): Record<string, PublicKey> {
     base_mint: p.pool.baseMint,
     quote_mint: p.pool.quoteMint,
     user_base_token_account:
-      p.userBaseTokenAccount ?? getAssociatedTokenAddress(p.pool.baseMint, p.user, false, baseTokenProgram),
+      p.userBaseTokenAccount ?? getAssociatedTokenAddress(p.pool.baseMint, p.user, true, baseTokenProgram),
     user_quote_token_account:
-      p.userQuoteTokenAccount ?? getAssociatedTokenAddress(p.pool.quoteMint, p.user, false, quoteTokenProgram),
+      p.userQuoteTokenAccount ?? getAssociatedTokenAddress(p.pool.quoteMint, p.user, true, quoteTokenProgram),
     pool_base_token_account: p.pool.poolBaseTokenAccount,
     pool_quote_token_account: p.pool.poolQuoteTokenAccount,
     protocol_fee_recipient: p.protocolFeeRecipient,

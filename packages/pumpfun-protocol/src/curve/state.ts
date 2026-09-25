@@ -34,6 +34,8 @@ export interface CurveState {
   quoteMint?: PublicKey;
   /** Cashback coins route the creator fee to traders; sells pass an extra account. */
   isCashbackCoin: boolean;
+  /** Mayhem-mode coins must pay the reserved fee recipients (see {@link feeRecipientFor}). */
+  isMayhemMode: boolean;
 }
 
 export class AccountLayoutError extends Error {
@@ -89,6 +91,7 @@ export function decodeCurveState(bytes: Uint8Array, mint: PublicKey): CurveState
     complete: f['complete'] as boolean,
     creator: f['creator'] as PublicKey,
     isCashbackCoin: (f['isCashbackCoin'] as boolean | undefined) ?? false,
+    isMayhemMode: (f['isMayhemMode'] as boolean | undefined) ?? false,
     ...(f['quoteMint'] ? { quoteMint: f['quoteMint'] as PublicKey } : {}),
   };
 }
@@ -99,6 +102,8 @@ export interface GlobalState {
   feeRecipient: PublicKey;
   /** Additional fee recipients the program accepts (zero keys removed). */
   feeRecipients: PublicKey[];
+  /** Fee recipients for mayhem-mode coins (zero keys removed). */
+  reservedFeeRecipients: PublicKey[];
   /** Buyback fee recipients (zero keys removed); trades must pass one. */
   buybackFeeRecipients: PublicKey[];
   feeBasisPoints: bigint;
@@ -111,10 +116,24 @@ export function decodeGlobalState(bytes: Uint8Array): GlobalState {
   return {
     feeRecipient: f['feeRecipient'] as PublicKey,
     feeRecipients: ((f['feeRecipients'] as PublicKey[] | undefined) ?? []).filter((k) => !k.equals(zero)),
+    reservedFeeRecipients: [
+      ...(f['reservedFeeRecipient'] ? [f['reservedFeeRecipient'] as PublicKey] : []),
+      ...((f['reservedFeeRecipients'] as PublicKey[] | undefined) ?? []),
+    ].filter((k) => !k.equals(zero)),
     buybackFeeRecipients: ((f['buybackFeeRecipients'] as PublicKey[] | undefined) ?? []).filter((k) => !k.equals(zero)),
     feeBasisPoints: f['feeBasisPoints'] as bigint,
     creatorFeeBasisPoints: (f['creatorFeeBasisPoints'] as bigint | undefined) ?? 0n,
   };
+}
+
+/**
+ * The fee recipient a trade on `curve` must pay: a reserved recipient for
+ * mayhem-mode coins, the primary recipient otherwise.
+ */
+export function feeRecipientFor(global: GlobalState, curve: Pick<CurveState, 'isMayhemMode'>): PublicKey {
+  const r = curve.isMayhemMode ? global.reservedFeeRecipients[0] : global.feeRecipient;
+  if (!r) throw new Error('pump.fun Global has no reserved fee recipient for a mayhem-mode coin');
+  return r;
 }
 
 export async function fetchAccountData(rpcPool: RpcPool, address: PublicKey, label: string): Promise<Uint8Array> {

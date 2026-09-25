@@ -27,15 +27,15 @@ function pool(accounts: Map<string, Uint8Array>) {
   return { call } as never;
 }
 
-function chain(opts: { complete: boolean; cashback?: boolean }) {
+function chain(opts: { complete: boolean; cashback?: boolean; mayhem?: boolean }) {
   const accounts = new Map<string, Uint8Array>();
   accounts.set(
     deriveBondingCurvePda(MINT).address.toBase58(),
-    bondingCurveBytes({ complete: opts.complete, creator: key(7), isCashbackCoin: opts.cashback ?? false }),
+    bondingCurveBytes({ complete: opts.complete, creator: key(7), isCashbackCoin: opts.cashback ?? false, isMayhemMode: opts.mayhem ?? false }),
   );
   accounts.set(
     deriveGlobalPda().address.toBase58(),
-    globalBytes({ feeRecipient: key(8), buybackFeeRecipients: pad([key(9)], 8) }),
+    globalBytes({ feeRecipient: key(8), reservedFeeRecipient: key(15), buybackFeeRecipients: pad([key(9)], 8) }),
   );
   const poolAddr = derivePumpSwapPoolPda(MINT).address;
   accounts.set(
@@ -67,6 +67,12 @@ describe('buy', () => {
     expect(ix.keys[1]!.pubkey.equals(key(8))).toBe(true); // fee_recipient from Global
     expect(ix.keys.at(-2)!.pubkey.equals(deriveBondingCurveV2Pda(MINT).address)).toBe(true);
     expect(ix.keys.at(-1)!.pubkey.equals(key(9))).toBe(true); // buyback recipient from Global
+  });
+
+  it('mayhem-mode coins pay the reserved fee recipient', async () => {
+    const { rpc } = chain({ complete: false, mayhem: true });
+    const ix = await buy(rpc, MINT, { user: USER, solIn: 1_000n, minTokensOut: 1n });
+    expect(ix.keys[1]!.pubkey.equals(key(15))).toBe(true);
   });
 
   it('after graduation: buy_exact_quote_in on the canonical PumpSwap pool', async () => {
