@@ -55,7 +55,3 @@ pnpm diag --check
 ```
 
 See `docs/CONTRIBUTING.md` for fixture-capture, vault setup, and the full contribution workflow.
-
-## Commits
-
-Per global conventions: no AI attribution in commit messages, branch names, or PR descriptions. No `Co-Authored-By` trailers. Natural developer language only.
