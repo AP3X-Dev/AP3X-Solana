@@ -75,11 +75,23 @@ export interface PumpSwapPool {
   isCashbackCoin: boolean;
   /** Mayhem-mode pools must pay the reserved fee recipients. */
   isMayhemMode: boolean;
+  /**
+   * `Pool.virtual_quote_reserves` (i128): quote the program prices with on
+   * top of the vault balance. 0 on pools that predate the field.
+   */
+  virtualQuoteReserves: bigint;
 }
 
 export interface PumpSwapPoolState extends PumpSwapPool {
   baseReserves: bigint;
+  /**
+   * Effective quote reserves the program prices with: the quote vault balance
+   * plus `virtualQuoteReserves`. Checked against mainnet trade events on
+   * 2026-10-03 (sells matched exactly; the raw vault balance did not).
+   */
   quoteReserves: bigint;
+  /** The quote vault's token balance alone. Not a pricing reserve. */
+  quoteVaultBalance: bigint;
 }
 
 function decode(name: string, bytes: Uint8Array, required: string[]): Record<string, unknown> {
@@ -112,6 +124,7 @@ export function decodePumpSwapPool(bytes: Uint8Array, pool: PublicKey): PumpSwap
     coinCreator: f['coinCreator'] as PublicKey,
     isCashbackCoin: (f['isCashbackCoin'] as boolean | undefined) ?? false,
     isMayhemMode: (f['isMayhemMode'] as boolean | undefined) ?? false,
+    virtualQuoteReserves: (f['virtualQuoteReserves'] as bigint | undefined) ?? 0n,
   };
 }
 
@@ -127,10 +140,12 @@ export async function pumpSwapPoolState(rpcPool: RpcPool, pool: PublicKey): Prom
     fetchAccountData(rpcPool, decoded.poolBaseTokenAccount, 'pool base token account'),
     fetchAccountData(rpcPool, decoded.poolQuoteTokenAccount, 'pool quote token account'),
   ]);
+  const quoteVaultBalance = tokenAmount(quote, 'quote');
   return {
     ...decoded,
     baseReserves: tokenAmount(base, 'base'),
-    quoteReserves: tokenAmount(quote, 'quote'),
+    quoteReserves: quoteVaultBalance + decoded.virtualQuoteReserves,
+    quoteVaultBalance,
   };
 }
 

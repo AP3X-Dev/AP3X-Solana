@@ -9,3 +9,7 @@ Pump.fun protocol primitives — PDA derivation, on-chain account readers, and i
 ## Program-upgrade check
 
 `checkProgramUpgrades(rpcPool)` compares each program's last-deployed slot (`programDeploySlot`, which reads only the 12-byte ProgramData header) with `VERIFIED_DEPLOYS`, the deployments the vendored IDLs were last verified against. A program with `upgraded: true` may have changed its accounts or instructions: stop building trades for it until the IDLs are re-verified and `VERIFIED_DEPLOYS` is updated. The opt-in `tests/live-simulation.test.ts` (`AP3X_LIVE_RPC=<mainnet rpc>`) checks both.
+
+## PumpSwap reserves
+
+`pumpSwapPoolState(rpcPool, pool).quoteReserves` is the effective quote reserve the program prices with: the quote vault balance plus `Pool.virtual_quote_reserves` (`virtualQuoteReserves`). The raw vault balance is `quoteVaultBalance`; do not price from it. Checked against mainnet sell events (the live suite keeps checking it).

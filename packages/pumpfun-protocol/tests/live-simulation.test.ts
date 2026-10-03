@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { PublicKey } from '@ap3x/solana-core';
 import { parseLogs, walkInvocations } from '@ap3x/solana-events';
-import { bondingCurveDecoder, PUMPFUN_BONDING_CURVE_PROGRAM_ID } from '@ap3x/pumpfun-events';
+import { bondingCurveDecoder, PUMPFUN_BONDING_CURVE_PROGRAM_ID, pumpSwapDecoder, PUMPFUN_PUMPSWAP_PROGRAM_ID } from '@ap3x/pumpfun-events';
 import {
   closeAccountIx,
   createAssociatedTokenAccountIx,
@@ -178,4 +178,24 @@ describe.skipIf(!RPC)('pump.fun live simulation', () => {
       expect(c.upgraded, `${c.programId.toBase58()} redeployed at ${c.deployedSlot}, verified ${c.verifiedSlot}`).toBe(false);
     }
   }, 60_000);
+
+  it('PumpSwap prices sells against effective quote reserves (vault + virtual)', async () => {
+    const sigs = await rpc<{ signature: string; err: unknown }[]>('getSignaturesForAddress', [PUMPFUN_PUMPSWAP_PROGRAM_ID.toBase58(), { limit: 40 }]);
+    let checked = 0;
+    for (const s of sigs.filter((x) => !x.err)) {
+      const tx = await rpc<{ meta: { logMessages: string[] } } | null>('getTransaction', [s.signature, { maxSupportedTransactionVersion: 1 }]);
+      if (!tx) continue;
+      for (const { chunk } of walkInvocations(parseLogs(tx.meta.logMessages))) {
+        if (chunk.programId !== PUMPFUN_PUMPSWAP_PROGRAM_ID.toBase58()) continue;
+        for (const e of pumpSwapDecoder.decodeAll(chunk)) {
+          if (e.kind !== 'pumpswap.sell') continue;
+          const effectiveQuote = e.poolQuoteTokenReserves + ((e['virtualQuoteReserves'] as bigint | undefined) ?? 0n);
+          // Constant product on the effective reserves, before fees.
+          expect(e.quoteAmountOut).toBe((effectiveQuote * e.baseAmountIn) / (e.poolBaseTokenReserves + e.baseAmountIn));
+          if (++checked >= 5) return;
+        }
+      }
+    }
+    expect(checked, 'recent PumpSwap sells to check').toBeGreaterThan(0);
+  }, 300_000);
 });

@@ -1,8 +1,10 @@
 /**
  * PumpSwap AMM math — pure BigInt functions.
  *
- * PumpSwap is the constant-product AMM (`k = x * y`, no virtual offset) that
- * pump.fun tokens migrate to at graduation. Post-graduation strategies price
+ * PumpSwap is the constant-product AMM (`k = x * y`) that pump.fun tokens
+ * migrate to at graduation. Its quote side carries a virtual offset
+ * (`Pool.virtual_quote_reserves`): price against the effective reserves
+ * from `pumpSwapPoolState`, never the raw vault balance. Post-graduation strategies price
  * and size fills against this pool rather than the bonding curve. Symmetric
  * to `curve/math.ts`, but simpler: there are no virtual reserves and no
  * graduation progress concept.
@@ -25,7 +27,7 @@
 export interface PumpSwapReserves {
   /** Raw units of the base mint (e.g. the pump token, 6 decimals). */
   baseReserves: bigint;
-  /** Lamports of the quote mint (typically wrapped SOL). */
+  /** Effective quote reserves, lamports: vault balance + virtual quote reserves. */
   quoteReserves: bigint;
 }
 

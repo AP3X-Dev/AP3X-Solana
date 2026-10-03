@@ -89,6 +89,23 @@ describe('pumpSwapPoolState', () => {
     const state = await pumpSwapPoolState({ call } as never, key(1));
     expect(state.baseReserves).toBe(1_000n);
     expect(state.quoteReserves).toBe(2_000n);
+    expect(state.quoteVaultBalance).toBe(2_000n);
+  });
+
+  it('adds the pool’s virtual quote reserves to the vault balance', async () => {
+    const accounts = new Map<string, Uint8Array>([
+      [
+        key(1).toBase58(),
+        poolBytes({ baseMint: MINT, quoteMint: WSOL_MINT, poolBaseTokenAccount: key(10), poolQuoteTokenAccount: key(11), virtualQuoteReserves: 17_584_505_288n }),
+      ],
+      [key(10).toBase58(), tokenAccountBytes(1_000n)],
+      [key(11).toBase58(), tokenAccountBytes(2_000n)],
+    ]);
+    const call = vi.fn(async (_m: string, params: unknown[]) => accountInfo(accounts.get(params[0] as string)!));
+    const state = await pumpSwapPoolState({ call } as never, key(1));
+    expect(state.virtualQuoteReserves).toBe(17_584_505_288n);
+    expect(state.quoteVaultBalance).toBe(2_000n);
+    expect(state.quoteReserves).toBe(17_584_507_288n);
   });
 
   it('throws when the pool does not exist', async () => {
