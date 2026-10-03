@@ -50,8 +50,8 @@ export {
 export { SYSTEM_PROGRAM_ID, systemTransfer, parseSystemTransfer } from './system-transfer';
 export type { SystemTransfer } from './system-transfer';
 export type { Bundle } from './jito-bundle';
-export { decodeTransaction, messageSigners, verifyTransactionSignatures } from './transaction-codec';
-export type { DecodedTransaction } from './transaction-codec';
+export { decodeTransaction, decompileMessage, messageSigners, verifyTransactionSignatures } from './transaction-codec';
+export type { DecodedTransaction, DecompiledMessage } from './transaction-codec';
 export {
   COMPUTE_BUDGET_PROGRAM_ID,
   MAX_COMPUTE_UNITS,

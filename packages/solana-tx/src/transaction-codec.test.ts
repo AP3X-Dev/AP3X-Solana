@@ -12,7 +12,7 @@ import {
 } from './compute-budget-instructions';
 import { systemTransfer } from './system-transfer';
 import { assemble, compileUnsigned, TransactionError, type Signer } from './transaction-assembler';
-import { decodeTransaction, messageSigners, verifyTransactionSignatures } from './transaction-codec';
+import { decodeTransaction, decompileMessage, messageSigners, verifyTransactionSignatures } from './transaction-codec';
 
 ed.etc.sha512Async = (...m: Uint8Array[]) => Promise.resolve(sha512(ed.etc.concatBytes(...m)));
 
@@ -126,5 +126,54 @@ describe('compute budget instructions', () => {
     expect(() => setComputeUnitPrice(1n << 64n)).toThrow(TransactionError);
     expect(setComputeUnitLimit(MAX_COMPUTE_UNITS).data[0]).toBe(2);
     expect(setComputeUnitPrice(0n).data[0]).toBe(3);
+  });
+});
+
+describe('decompileMessage', () => {
+  it('recovers the compiled instructions, flags and blockhash', async () => {
+    const { payer, cosigner, instructions } = await fixture();
+    const { messageBytes } = compileUnsigned({ instructions, payer: payer.address, recentBlockhash: BLOCKHASH });
+    const d = decompileMessage(messageBytes);
+    expect(d.recentBlockhash).toBe(BLOCKHASH);
+    expect(d.signers.map((k) => k.toBase58())).toEqual([payer.address.toBase58(), cosigner.address.toBase58()]);
+    expect(d.instructions).toHaveLength(instructions.length);
+    d.instructions.forEach((ix, i) => {
+      expect(ix.programId.toBase58()).toBe(instructions[i]!.programId.toBase58());
+      expect(ix.data).toEqual(instructions[i]!.data);
+      expect(ix.keys.map((k) => [k.pubkey.toBase58(), k.isSigner, k.isWritable])).toEqual(
+        instructions[i]!.keys.map((k) => [k.pubkey.toBase58(), k.isSigner, k.isWritable]),
+      );
+    });
+  });
+
+  it('reads a read-only signer and read-only accounts correctly', async () => {
+    const payer = await signer(1);
+    const ro = await signer(3);
+    const ix = {
+      programId: TO,
+      keys: [
+        { pubkey: payer.address, isSigner: true, isWritable: true },
+        { pubkey: ro.address, isSigner: true, isWritable: false },
+        { pubkey: COMPUTE_BUDGET_PROGRAM_ID, isSigner: false, isWritable: false },
+      ],
+      data: Uint8Array.from([1, 2, 3]),
+    };
+    const d = decompileMessage(compileUnsigned({ instructions: [ix], payer: payer.address, recentBlockhash: BLOCKHASH }).messageBytes);
+    expect(d.instructions[0]!.keys.map((k) => [k.isSigner, k.isWritable])).toEqual([
+      [true, true],
+      [true, false],
+      [false, false],
+    ]);
+  });
+
+  it('refuses lookup tables, trailing bytes and truncation', async () => {
+    const { payer, instructions } = await fixture();
+    const { messageBytes } = compileUnsigned({ instructions, payer: payer.address, recentBlockhash: BLOCKHASH });
+    const withLookup = Uint8Array.from([...messageBytes.slice(0, -1), 1, ...new Uint8Array(32), 0, 0]);
+    expect(() => decompileMessage(withLookup)).toThrow(/lookup tables/);
+    expect(() => decompileMessage(Uint8Array.from([...messageBytes, 0]))).toThrow(/trailing/);
+    expect(() => decompileMessage(messageBytes.slice(0, messageBytes.length - 5))).toThrow(TransactionError);
+    expect(() => decompileMessage(Uint8Array.from([0x80]))).toThrow(/header/);
+    expect(() => decompileMessage(Uint8Array.from([0x82, 1, 0, 0]))).toThrow(/version/);
   });
 });

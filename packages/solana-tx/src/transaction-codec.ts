@@ -8,10 +8,11 @@
  * byte). Malformed input throws {@link TransactionError} `tx.malformed`.
  */
 
-import { compactU16, PublicKey } from '@ap3x/solana-core';
+import { base58, compactU16, PublicKey } from '@ap3x/solana-core';
 import * as ed from '@noble/ed25519';
 
 import { TransactionError } from './transaction-assembler';
+import type { Instruction } from './transaction-assembler';
 
 const SIGNATURE_LENGTH = 64;
 const PUBLIC_KEY_LENGTH = 32;
@@ -64,6 +65,74 @@ export async function verifyTransactionSignatures(bytes: Uint8Array): Promise<bo
     if (!ok) return false;
   }
   return true;
+}
+
+export interface DecompiledMessage {
+  /** Instructions with signer/writable flags from the message header. */
+  instructions: Instruction[];
+  /** Static account keys, in message order (the fee payer first). */
+  accountKeys: PublicKey[];
+  /** Required signers, in signature-slot order. */
+  signers: PublicKey[];
+  recentBlockhash: string;
+}
+
+/**
+ * Turn a message back into instructions, for checking what a signed
+ * transaction actually does. Only messages without address lookup tables
+ * can be resolved this way; one that uses them throws `tx.malformed`.
+ */
+export function decompileMessage(messageBytes: Uint8Array): DecompiledMessage {
+  const versioned = ((messageBytes[0] ?? 0) & VERSIONED) !== 0;
+  if (versioned && (messageBytes[0]! & 0x7f) !== 0) malformed(`unsupported message version ${messageBytes[0]! & 0x7f}`);
+  let off = versioned ? 1 : 0;
+  const [required, readonlySigned, readonlyUnsigned] = [messageBytes[off], messageBytes[off + 1], messageBytes[off + 2]];
+  if (required === undefined || readonlySigned === undefined || readonlyUnsigned === undefined) malformed('message header missing');
+  off += 3;
+
+  const nKeys = readCompact(messageBytes, off);
+  off += nKeys.size;
+  if (required > nKeys.value || off + nKeys.value * PUBLIC_KEY_LENGTH > messageBytes.length) malformed('account keys run past the end');
+  const accountKeys: PublicKey[] = [];
+  for (let i = 0; i < nKeys.value; i++) accountKeys.push(PublicKey.fromBytes(messageBytes.slice(off + i * PUBLIC_KEY_LENGTH, off + (i + 1) * PUBLIC_KEY_LENGTH)));
+  off += nKeys.value * PUBLIC_KEY_LENGTH;
+
+  if (off + 32 > messageBytes.length) malformed('blockhash runs past the end');
+  const recentBlockhash = base58.encode(messageBytes.slice(off, off + 32));
+  off += 32;
+
+  const isSigner = (i: number) => i < required;
+  const isWritable = (i: number) =>
+    i < required ? i < required - readonlySigned : i < nKeys.value - readonlyUnsigned;
+
+  const nIx = readCompact(messageBytes, off);
+  off += nIx.size;
+  const instructions: Instruction[] = [];
+  for (let n = 0; n < nIx.value; n++) {
+    const programIndex = messageBytes[off++];
+    if (programIndex === undefined || programIndex >= nKeys.value) malformed(`instruction ${n} program index out of range`);
+    const nAcc = readCompact(messageBytes, off);
+    off += nAcc.size;
+    if (off + nAcc.value > messageBytes.length) malformed(`instruction ${n} accounts run past the end`);
+    const keys = Array.from(messageBytes.slice(off, off + nAcc.value), (i) => {
+      if (i >= nKeys.value) malformed(`instruction ${n} account index ${i} needs a lookup table`);
+      return { pubkey: accountKeys[i]!, isSigner: isSigner(i), isWritable: isWritable(i) };
+    });
+    off += nAcc.value;
+    const len = readCompact(messageBytes, off);
+    off += len.size;
+    if (off + len.value > messageBytes.length) malformed(`instruction ${n} data runs past the end`);
+    instructions.push({ programId: accountKeys[programIndex]!, keys, data: messageBytes.slice(off, off + len.value) });
+    off += len.value;
+  }
+
+  if (versioned) {
+    const lookups = readCompact(messageBytes, off);
+    off += lookups.size;
+    if (lookups.value !== 0) malformed('message uses address lookup tables');
+  }
+  if (off !== messageBytes.length) malformed('trailing bytes after the message');
+  return { instructions, accountKeys, signers: accountKeys.slice(0, required), recentBlockhash };
 }
 
 function readCompact(bytes: Uint8Array, offset: number): { value: number; size: number } {
