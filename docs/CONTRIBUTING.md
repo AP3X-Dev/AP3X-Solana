@@ -153,10 +153,5 @@ The nightly CI workflow runs `pnpm diag --check` against env-provided endpoints.
 
 ## Commits + PRs
 
-Per the project-wide conventions (see root `CLAUDE.md` and the user's global instructions):
-
-- **No AI attribution** in commit messages, branch names, or PR descriptions.
-- **No `Co-Authored-By` trailers** of any kind.
-- Use natural developer language. Don't reference 'agent', 'AI', 'Claude', 'automated', or 'LLM' in any user-visible artifact.
 - Prefer focused commits (`pnpm changeset` first when applicable, then `git commit` the change + the changeset together).
 - PR titles + bodies follow the same convention. Conventional Commits style is fine (`feat:`, `fix:`, `chore:` prefixes), but not required.

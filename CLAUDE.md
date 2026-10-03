@@ -23,10 +23,6 @@ PRPs in `roadmap/` drive all work in this repo. Active: PRP-01 (Solana substrate
 - CI matrix: Ubuntu + Windows
 - `pnpm diag` health probes per Chad's PRP-1 pattern
 
-## Commits
-
-Per global CLAUDE.md: no AI attribution in commit messages, branch names, or PR descriptions. No `Co-Authored-By` trailers. Natural developer language only.
-
 ## AMP Memory
 
 Project: ap3x-solana
