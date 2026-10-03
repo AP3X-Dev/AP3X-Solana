@@ -154,4 +154,4 @@ The nightly CI workflow runs `pnpm diag --check` against env-provided endpoints.
 ## Commits + PRs
 
 - Prefer focused commits (`pnpm changeset` first when applicable, then `git commit` the change + the changeset together).
-- PR titles + bodies follow the same convention. Conventional Commits style is fine (`feat:`, `fix:`, `chore:` prefixes), but not required.
+- Conventional Commits style is fine for commit and PR titles (`feat:`, `fix:`, `chore:` prefixes), but not required.
