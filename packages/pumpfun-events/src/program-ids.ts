@@ -21,3 +21,11 @@ export const PUMPFUN_BONDING_CURVE_PROGRAM_ID = PublicKey.fromBase58(
 export const PUMPFUN_PUMPSWAP_PROGRAM_ID = PublicKey.fromBase58(
   'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA',
 );
+
+/**
+ * Pump Fees program ID. Pump and PumpSwap call it by CPI to read fee tiers.
+ * Mainnet: pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ
+ */
+export const PUMPFUN_FEES_PROGRAM_ID = PublicKey.fromBase58(
+  'pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ',
+);

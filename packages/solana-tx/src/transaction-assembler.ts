@@ -113,7 +113,9 @@ export type TransactionErrorCode =
   | 'bundle_too_large'
   | 'bundle_empty'
   | 'invalid_tip'
-  | 'invalid_transfer';
+  | 'invalid_transfer'
+  | 'invalid_compute_budget'
+  | 'malformed';
 
 /** Structured payload for {@link TransactionError}. */
 export interface TransactionErrorMeta {
@@ -537,23 +539,40 @@ function serializeMessage(
  * @throws {@link TransactionError} if the payer is missing from `signers`,
  *         a required signer is missing, or the blockhash is malformed.
  */
-export async function assemble(options: AssemblerOptions): Promise<AssemblerResult> {
-  const { instructions, payer, signers, recentBlockhash } = options;
+/** Options for {@link compileUnsigned}: {@link AssemblerOptions} without signers. */
+export type CompileOptions = Omit<AssemblerOptions, 'signers'>;
+
+export interface CompiledTransaction {
+  /** The v0 message bytes the signers must sign. */
+  messageBytes: Uint8Array;
+  /** Wire format with every signature slot zeroed, ready to hand to a wallet. */
+  unsignedTransaction: Uint8Array;
+  /** Required signers, in signature-slot order (the payer first). */
+  signers: PublicKey[];
+  /** Resolved account list, as in {@link AssemblerResult.accountKeys}. */
+  accountKeys: PublicKey[];
+}
+
+/**
+ * Compile a v0 transaction without signing it: for a builder that returns
+ * an unsigned transaction to the wallet that will sign it.
+ */
+export function compileUnsigned(options: CompileOptions): CompiledTransaction {
+  const c = compile(options);
+  const signers = c.compiled.staticAccounts.slice(0, c.compiled.numRequiredSignatures).map((a) => a.pubkey);
+  return {
+    messageBytes: c.messageBytes,
+    unsignedTransaction: wire(signers.map(() => new Uint8Array(SIGNATURE_LENGTH)), c.messageBytes),
+    signers,
+    accountKeys: c.accountKeys,
+  };
+}
+
+/** Steps shared by {@link assemble} and {@link compileUnsigned}: blockhash, accounts, message. */
+function compile(options: CompileOptions) {
+  const { instructions, payer, recentBlockhash } = options;
   const alts = (options.alts ?? []).map(normaliseAlt);
 
-  // ---- 1. Validate payer ∈ signers ----------------------------------------
-  const payerB58 = payer.toBase58();
-  const signerByB58 = new Map<string, Signer>();
-  for (const s of signers) signerByB58.set(s.address.toBase58(), s);
-  if (!signerByB58.has(payerB58)) {
-    throw new TransactionError(
-      'payer_not_in_signers',
-      `assemble: payer ${payerB58} is not present in signers[]`,
-      { address: payerB58 },
-    );
-  }
-
-  // ---- 2. Decode blockhash ------------------------------------------------
   let blockhashBytes: Uint8Array;
   try {
     blockhashBytes = base58.decode(recentBlockhash);
@@ -576,8 +595,57 @@ export async function assemble(options: AssemblerOptions): Promise<AssemblerResu
     );
   }
 
-  // ---- 3. Compile accounts (ordering, ALT resolution, index lookup) -------
   const compiled = compileAccounts(instructions, payer, alts);
+  const messageBytes = serializeMessage(
+    compiled.staticAccounts,
+    compiled.altWritable,
+    compiled.altReadonly,
+    instructions,
+    blockhashBytes,
+    compiled.numRequiredSignatures,
+    compiled.numReadonlySigned,
+    compiled.numReadonlyUnsigned,
+    compiled.indexByBase58,
+  );
+  const accountKeys = [
+    ...compiled.staticAccounts.map((a) => a.pubkey),
+    ...compiled.altWritable.map((a) => a.pubkey),
+    ...compiled.altReadonly.map((a) => a.pubkey),
+  ];
+  return { compiled, messageBytes, accountKeys };
+}
+
+/** compactArray<signature> || message. */
+function wire(signatures: Uint8Array[], messageBytes: Uint8Array): Uint8Array {
+  const sigCountPrefix = compactU16.encode(signatures.length);
+  const out = new Uint8Array(sigCountPrefix.length + signatures.length * SIGNATURE_LENGTH + messageBytes.length);
+  out.set(sigCountPrefix, 0);
+  let off = sigCountPrefix.length;
+  for (const sig of signatures) {
+    out.set(sig, off);
+    off += SIGNATURE_LENGTH;
+  }
+  out.set(messageBytes, off);
+  return out;
+}
+
+export async function assemble(options: AssemblerOptions): Promise<AssemblerResult> {
+  const { payer, signers } = options;
+
+  // ---- 1. Validate payer ∈ signers ----------------------------------------
+  const payerB58 = payer.toBase58();
+  const signerByB58 = new Map<string, Signer>();
+  for (const s of signers) signerByB58.set(s.address.toBase58(), s);
+  if (!signerByB58.has(payerB58)) {
+    throw new TransactionError(
+      'payer_not_in_signers',
+      `assemble: payer ${payerB58} is not present in signers[]`,
+      { address: payerB58 },
+    );
+  }
+
+  // ---- 2–3. Blockhash, accounts, message ----------------------------------
+  const { compiled, messageBytes, accountKeys } = compile(options);
 
   // ---- 4. Check every signer account has a matching Signer ----------------
   for (const acc of compiled.staticAccounts) {
@@ -590,19 +658,6 @@ export async function assemble(options: AssemblerOptions): Promise<AssemblerResu
       );
     }
   }
-
-  // ---- 5. Serialize message bytes -----------------------------------------
-  const messageBytes = serializeMessage(
-    compiled.staticAccounts,
-    compiled.altWritable,
-    compiled.altReadonly,
-    instructions,
-    blockhashBytes,
-    compiled.numRequiredSignatures,
-    compiled.numReadonlySigned,
-    compiled.numReadonlyUnsigned,
-    compiled.indexByBase58,
-  );
 
   // ---- 6. Collect signatures in signer-index order ------------------------
   // Iterate the first `numRequiredSignatures` entries of staticAccounts —
@@ -624,25 +679,5 @@ export async function assemble(options: AssemblerOptions): Promise<AssemblerResu
   }
 
   // ---- 7. Emit the signed transaction (compactArray<sig> + message) -------
-  const sigCountPrefix = compactU16.encode(signatures.length);
-  const totalLen =
-    sigCountPrefix.length + signatures.length * SIGNATURE_LENGTH + messageBytes.length;
-  const signedTransaction = new Uint8Array(totalLen);
-  signedTransaction.set(sigCountPrefix, 0);
-  let off = sigCountPrefix.length;
-  for (const sig of signatures) {
-    signedTransaction.set(sig, off);
-    off += SIGNATURE_LENGTH;
-  }
-  signedTransaction.set(messageBytes, off);
-
-  return {
-    signedTransaction,
-    messageBytes,
-    accountKeys: [
-      ...compiled.staticAccounts.map((a) => a.pubkey),
-      ...compiled.altWritable.map((a) => a.pubkey),
-      ...compiled.altReadonly.map((a) => a.pubkey),
-    ],
-  };
+  return { signedTransaction: wire(signatures, messageBytes), messageBytes, accountKeys };
 }

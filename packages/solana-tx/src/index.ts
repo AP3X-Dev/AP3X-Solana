@@ -29,12 +29,14 @@ export {
 } from './compute-budget';
 export type { SimulateResult, RpcPoolLike } from './compute-budget';
 
-export { assemble, TransactionError } from './transaction-assembler';
+export { assemble, compileUnsigned, TransactionError } from './transaction-assembler';
 export type {
   AccountMeta,
   AssemblerAlt,
   AssemblerOptions,
   AssemblerResult,
+  CompileOptions,
+  CompiledTransaction,
   Instruction,
   Signer,
   TransactionErrorCode,
@@ -48,3 +50,11 @@ export {
 export { SYSTEM_PROGRAM_ID, systemTransfer, parseSystemTransfer } from './system-transfer';
 export type { SystemTransfer } from './system-transfer';
 export type { Bundle } from './jito-bundle';
+export { decodeTransaction, messageSigners, verifyTransactionSignatures } from './transaction-codec';
+export type { DecodedTransaction } from './transaction-codec';
+export {
+  COMPUTE_BUDGET_PROGRAM_ID,
+  MAX_COMPUTE_UNITS,
+  setComputeUnitLimit,
+  setComputeUnitPrice,
+} from './compute-budget-instructions';
