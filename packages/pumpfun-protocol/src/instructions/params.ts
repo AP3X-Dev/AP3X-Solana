@@ -62,6 +62,46 @@ export interface SellParams extends BondingCurveTradeAccounts {
   cashback?: boolean;
 }
 
+/**
+ * Accounts shared by the v2 bonding-curve trades, which name the curve's
+ * quote mint explicitly. For SOL curves the quote mint is WSOL and the
+ * user's WSOL account must hold the quote (create it, transfer SOL in,
+ * `syncNativeIx`, and close it afterwards). That makes a v2 SOL trade larger
+ * and costlier than the legacy instructions; prefer those for SOL curves.
+ */
+export interface BondingCurveV2TradeAccounts {
+  baseMint: PublicKey;
+  quoteMint: PublicKey;
+  user: PublicKey;
+  feeRecipient: PublicKey;
+  /** One of `Global.buyback_fee_recipients`. */
+  buybackFeeRecipient: PublicKey;
+  /** `BondingCurve.creator`; seeds the creator vault. */
+  creator: PublicKey;
+  baseTokenProgram?: PublicKey;
+  quoteTokenProgram?: PublicKey;
+  userBaseTokenAccount?: PublicKey;
+  userQuoteTokenAccount?: PublicKey;
+}
+
+/** `buy_v2`: receive exactly `amount` tokens for at most `maxSolCost` of the quote. */
+export interface BuyV2Params extends BondingCurveV2TradeAccounts {
+  amount: bigint;
+  maxSolCost: bigint;
+}
+
+/** `buy_exact_quote_in_v2`: spend exactly `spendableQuoteIn` for at least `minTokensOut`. */
+export interface BuyExactQuoteInV2Params extends BondingCurveV2TradeAccounts {
+  spendableQuoteIn: bigint;
+  minTokensOut: bigint;
+}
+
+/** `sell_v2`: sell exactly `amount` tokens for at least `minSolOutput` of the quote. */
+export interface SellV2Params extends BondingCurveV2TradeAccounts {
+  amount: bigint;
+  minSolOutput: bigint;
+}
+
 /** The pool fields a PumpSwap trade needs (see `pumpSwapPoolState`). */
 export interface PumpSwapPoolAccounts {
   pool: PublicKey;

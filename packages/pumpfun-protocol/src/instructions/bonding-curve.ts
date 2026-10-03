@@ -7,10 +7,14 @@ import { deriveUserVolumeAccumulatorPda } from './account-derivation.js';
 import { buildIdlInstruction } from './idl-instruction.js';
 import type {
   BondingCurveTradeAccounts,
+  BondingCurveV2TradeAccounts,
+  BuyExactQuoteInV2Params,
   BuyExactSolInParams,
   BuyParams,
+  BuyV2Params,
   CreateParams,
   SellParams,
+  SellV2Params,
 } from './params.js';
 
 function positive(name: string, v: bigint): void {
@@ -88,4 +92,49 @@ export function buildSell(params: SellParams): Instruction {
     amount: params.amount,
     minSolOutput: params.minSolOutput,
   }, remainingAccounts(params, params.cashback));
+}
+
+function v2Accounts(p: BondingCurveV2TradeAccounts): Record<string, PublicKey> {
+  const baseTokenProgram = p.baseTokenProgram ?? TOKEN_PROGRAM_ID;
+  const quoteTokenProgram = p.quoteTokenProgram ?? TOKEN_PROGRAM_ID;
+  return {
+    base_mint: p.baseMint,
+    quote_mint: p.quoteMint,
+    base_token_program: baseTokenProgram,
+    quote_token_program: quoteTokenProgram,
+    user: p.user,
+    fee_recipient: p.feeRecipient,
+    buyback_fee_recipient: p.buybackFeeRecipient,
+    'bonding_curve.creator': p.creator,
+    associated_base_user: p.userBaseTokenAccount ?? getAssociatedTokenAddress(p.baseMint, p.user, true, baseTokenProgram),
+    associated_quote_user: p.userQuoteTokenAccount ?? getAssociatedTokenAddress(p.quoteMint, p.user, true, quoteTokenProgram),
+  };
+}
+
+/** `buy_v2`: receive exactly `amount` tokens for at most `maxSolCost` of the quote mint. */
+export function buildBuyV2(params: BuyV2Params): Instruction {
+  positive('BuyV2Params.amount', params.amount);
+  positive('BuyV2Params.maxSolCost', params.maxSolCost);
+  return buildIdlInstruction(PUMP_SCHEMA, 'buy_v2', v2Accounts(params), {
+    amount: params.amount,
+    maxSolCost: params.maxSolCost,
+  });
+}
+
+/** `buy_exact_quote_in_v2`: spend exactly `spendableQuoteIn` for at least `minTokensOut` tokens. */
+export function buildBuyExactQuoteInV2(params: BuyExactQuoteInV2Params): Instruction {
+  positive('BuyExactQuoteInV2Params.spendableQuoteIn', params.spendableQuoteIn);
+  return buildIdlInstruction(PUMP_SCHEMA, 'buy_exact_quote_in_v2', v2Accounts(params), {
+    spendableQuoteIn: params.spendableQuoteIn,
+    minTokensOut: params.minTokensOut,
+  });
+}
+
+/** `sell_v2`: sell exactly `amount` tokens for at least `minSolOutput` of the quote mint. */
+export function buildSellV2(params: SellV2Params): Instruction {
+  positive('SellV2Params.amount', params.amount);
+  return buildIdlInstruction(PUMP_SCHEMA, 'sell_v2', v2Accounts(params), {
+    amount: params.amount,
+    minSolOutput: params.minSolOutput,
+  });
 }

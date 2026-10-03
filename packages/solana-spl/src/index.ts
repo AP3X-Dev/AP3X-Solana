@@ -64,3 +64,5 @@ export type {
 } from './decoders/transfer-instruction.js';
 export { parseTransferLog } from './decoders/transfer-log.js';
 export type { ProgramLogChunk } from './decoders/transfer-log.js';
+
+export { NATIVE_MINT, syncNativeIx, closeAccountIx } from './native';

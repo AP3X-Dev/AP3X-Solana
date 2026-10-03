@@ -9,9 +9,23 @@ import { describe, expect, it } from 'vitest';
 import { PublicKey } from '@ap3x/solana-core';
 import { parseLogs, walkInvocations } from '@ap3x/solana-events';
 import { bondingCurveDecoder, PUMPFUN_BONDING_CURVE_PROGRAM_ID } from '@ap3x/pumpfun-events';
-import { createAssociatedTokenAccountIx } from '@ap3x/solana-spl';
-import { assemble } from '@ap3x/solana-tx';
-import { buildBuyExactSolIn, curveState, feeRecipientFor, globalState } from '../src/index.js';
+import {
+  closeAccountIx,
+  createAssociatedTokenAccountIx,
+  getAssociatedTokenAddress,
+  NATIVE_MINT,
+  syncNativeIx,
+} from '@ap3x/solana-spl';
+import { assemble, systemTransfer, type Instruction } from '@ap3x/solana-tx';
+import {
+  buildBuyExactQuoteInV2,
+  buildBuyExactSolIn,
+  buildSellV2,
+  checkProgramUpgrades,
+  curveState,
+  feeRecipientFor,
+  globalState,
+} from '../src/index.js';
 
 const RPC = process.env['AP3X_LIVE_RPC'];
 
@@ -66,6 +80,22 @@ async function findMintAndPayer(): Promise<{ mint: PublicKey; payer: PublicKey }
   throw new Error('no suitable live mint/payer in recent pump.fun activity');
 }
 
+async function simulate(payer: PublicKey, instructions: Instruction[]) {
+  const { value: bh } = await rpc<{ value: { blockhash: string } }>('getLatestBlockhash', []);
+  const { signedTransaction } = await assemble({
+    instructions,
+    payer,
+    signers: [{ address: payer, sign: async () => new Uint8Array(64) }],
+    recentBlockhash: bh.blockhash,
+  });
+  const sim = await rpc<{ value: { err: unknown; logs: string[] | null } }>('simulateTransaction', [
+    Buffer.from(signedTransaction).toString('base64'),
+    { encoding: 'base64', sigVerify: false, replaceRecentBlockhash: true, commitment: 'processed' },
+  ]);
+  if (sim.value.err) console.error(sim.value.logs?.join('\n'));
+  return sim.value;
+}
+
 describe.skipIf(!RPC)('pump.fun live simulation', () => {
   it('the deployed program accepts a buy_exact_sol_in built from on-chain state', async () => {
     const { mint, payer } = await findMintAndPayer();
@@ -109,4 +139,43 @@ describe.skipIf(!RPC)('pump.fun live simulation', () => {
     expect(sim.value.err).toBeNull();
     expect(sim.value.logs?.some((l) => l.includes('Instruction: BuyExactSolIn'))).toBe(true);
   }, 180_000);
+
+  it('the deployed program accepts v2 buy and sell against a WSOL quote account', async () => {
+    const { mint, payer } = await findMintAndPayer();
+    const [global, curve, mintInfo] = await Promise.all([
+      globalState(pool),
+      curveState(pool, mint),
+      rpc<{ value: { owner: string } }>('getAccountInfo', [mint.toBase58(), { encoding: 'base64' }]),
+    ]);
+    const baseTokenProgram = PublicKey.fromBase58(mintInfo.value.owner);
+    const accounts = {
+      baseMint: mint,
+      quoteMint: NATIVE_MINT,
+      user: payer,
+      feeRecipient: feeRecipientFor(global, curve),
+      buybackFeeRecipient: global.buybackFeeRecipients[0]!,
+      creator: curve.creator,
+      baseTokenProgram,
+    };
+    const wsol = getAssociatedTokenAddress(NATIVE_MINT, payer, true);
+    const value = await simulate(payer, [
+      createAssociatedTokenAccountIx(payer, payer, mint, baseTokenProgram),
+      createAssociatedTokenAccountIx(payer, payer, NATIVE_MINT),
+      systemTransfer(payer, wsol, 1_000_000n),
+      syncNativeIx(wsol),
+      buildBuyExactQuoteInV2({ ...accounts, spendableQuoteIn: 1_000_000n, minTokensOut: 1n }),
+      buildSellV2({ ...accounts, amount: 1_000n, minSolOutput: 0n }),
+      closeAccountIx(wsol, payer, payer),
+    ]);
+    expect(value.err).toBeNull();
+    expect(value.logs?.some((l) => l.includes('Instruction: BuyExactQuoteInV2'))).toBe(true);
+    expect(value.logs?.some((l) => l.includes('Instruction: SellV2'))).toBe(true);
+  }, 180_000);
+
+  it('the deployed programs match the deployments the IDLs were verified against', async () => {
+    const checks = await checkProgramUpgrades(pool);
+    for (const c of checks) {
+      expect(c.upgraded, `${c.programId.toBase58()} redeployed at ${c.deployedSlot}, verified ${c.verifiedSlot}`).toBe(false);
+    }
+  }, 60_000);
 });
