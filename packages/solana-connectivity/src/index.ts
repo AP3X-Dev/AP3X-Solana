@@ -42,3 +42,13 @@ export type {
   Commitment,
   GapBackfillOpts,
 } from './historical-backfill';
+export { subscribeHeliusTransactions, subscribeProgramLogs } from './tx-stream';
+export type {
+  StreamCommitment,
+  StreamedTransaction,
+  TxStream,
+  TxStreamHandlers,
+  TxStreamOptions,
+  HeliusTransactionStreamOptions,
+  ProgramLogsStreamOptions,
+} from './tx-stream';

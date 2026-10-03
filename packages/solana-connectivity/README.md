@@ -10,6 +10,7 @@ RPC and Geyser connectivity for the AP3X Solana runtime: a health-aware JSON-RPC
 
 - **RPC** — `RpcPool` (`call(method, params, opts?)`, `pinForWrite()`, `endpoints()`, emits `'metrics'` with an `RpcMetricEvent`), plus `RpcEndpoint`, `RpcPoolOptions`, `RpcCallOptions`. `rpc_method` errors are not retried. `LatencyTracker` and `HealthState` are the per-endpoint building blocks.
 - **Geyser** — `GeyserClient` and `subscribe(req, handler, opts?)`. `opts.signal` is an optional `AbortSignal` that closes the subscription. The returned `Subscription` emits `'update'`, `'dropped'` (`DroppedEvent`), `'gap'` (`GapEvent`), `'error'` and `'closed'`. When the queue (`queueCapacity`, default 1000) is full, the oldest update is dropped. `GrpcAdapter` lets tests inject a fake transport.
+- **WebSocket streams** — `subscribeHeliusTransactions({ url, accountInclude }, handlers)` (Helius Enhanced WebSockets `transactionSubscribe`, paid plans only) and `subscribeProgramLogs({ url, programIds }, handlers)` (standard `logsSubscribe`, one subscription per program, duplicate signatures dropped). Both deliver a `StreamedTransaction` (`signature`, `slot`, `err`, `logs`, `receivedAt`). They resolve once subscribed and reject if the first connection or subscription fails, so a caller can fall back from one to the other. After that, a dropped socket reconnects with backoff and calls `onReconnect(lastSlot)`.
 - **Checkpoints** — `CheckpointStore` interface and `FileCheckpointStore({ baseDir })`, which writes each checkpoint atomically.
 - **Backfill** — `RpcHistoricalBackfill(pool)`: `getSignaturesForAddress`, `iterateSignaturesForAddress` (pages with `before`), `getTransaction` (sets `maxSupportedTransactionVersion` to `1` unless you pass another value), `getBlocks` (in 1000-slot chunks) and `fetchEventsForProgram(programId, range, decoder)`. A decoder that throws yields an `UnknownEventDecode` and does not stop the stream. These `DecodedEvent` / `UnknownEventDecode` types carry `slot` and `signature`; they are separate from the same-named types in `@ap3x/solana-events`.
 - **`gapBackfill({ backfill, programIds, decoder, deliver })`** — returns an `onGap(from, to)` handler for `GeyserClient`. It refetches each program's transactions for slots `from` to `to - 1` and passes every decoded event to `deliver`.
@@ -46,9 +47,9 @@ geyser.subscribe(
 
 With `--check`, the command exits 1 when any probe fails. Usage errors exit 2.
 
-## gRPC dependency note
+## Dependency note
 
-`@grpc/grpc-js` and `@grpc/proto-loader` are allowed exceptions to the zero-ecosystem-deps rule. Yellowstone requires them, and they bring in no Solana SDK. The proto file is vendored under `src/proto/`.
+`@grpc/grpc-js` and `@grpc/proto-loader` are allowed exceptions to the zero-ecosystem-deps rule. Yellowstone requires them, and they bring in no Solana SDK. The proto file is vendored under `src/proto/`. `ws` is the third exception: Node 20 has no built-in WebSocket client.
 
 ## Boundary
 
