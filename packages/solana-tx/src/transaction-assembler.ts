@@ -112,7 +112,8 @@ export type TransactionErrorCode =
   | 'no_fee_payer'
   | 'bundle_too_large'
   | 'bundle_empty'
-  | 'invalid_tip';
+  | 'invalid_tip'
+  | 'invalid_transfer';
 
 /** Structured payload for {@link TransactionError}. */
 export interface TransactionErrorMeta {

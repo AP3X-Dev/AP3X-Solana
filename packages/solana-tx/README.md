@@ -14,6 +14,7 @@ Transaction building for the AP3X Solana runtime: PDA derivation, address lookup
 - **Priority fees** — `PriorityFeeEstimator({ geyser, windowSlots?, warmupSlots?, onSlot? })` with `start()`, `close()` and `tier(t)`. `tier(t)` returns microlamports per CU for a `FeeTier` (`low`/`med`/`high`/`turbo` map to p50/p75/p90/p99, with turbo raised by a further 10%). Until `warmupSlots` distinct slots (default 30) have been seen, it returns `WARMUP_DEFAULTS`. `quantile` and `SIGNATURE_FEE_LAMPORTS` are also exported.
 - **Compute budget** — `simulateAndBudget(rpcPool, txBase64, payer)` runs `simulateTransaction` and returns `{ unitsConsumed, unitsLimit }`, where the limit is consumed units × `BUDGET_HEADROOM` (1.15). It never throws; on any failure it returns `FALLBACK_UNITS_CONSUMED` and `FALLBACK_UNITS_LIMIT`.
 - **Jito** — `JitoBundleBuilder`: `compose(txs)` builds a `Bundle` of 1 to `JITO_MAX_TXS_PER_BUNDLE` (5) signed transactions. `tipInstruction(from, tipAccount, lamports)` builds a System Program transfer that pays the tip.
+- **System transfers** — `systemTransfer(from, to, lamports)` builds a System Program transfer (`0 < lamports <= u64::MAX`, else `tx.invalid_transfer`). `parseSystemTransfer(ix)` returns `{ from, to, lamports }`, or `null` for anything that is not exactly a well-formed transfer, so callers can check what a transaction pays.
 
 ## Usage
 

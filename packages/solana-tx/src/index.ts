@@ -44,6 +44,7 @@ export type {
 export {
   JitoBundleBuilder,
   JITO_MAX_TXS_PER_BUNDLE,
-  SYSTEM_PROGRAM_ID,
 } from './jito-bundle';
+export { SYSTEM_PROGRAM_ID, systemTransfer, parseSystemTransfer } from './system-transfer';
+export type { SystemTransfer } from './system-transfer';
 export type { Bundle } from './jito-bundle';

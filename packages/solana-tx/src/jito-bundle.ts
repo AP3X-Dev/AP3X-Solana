@@ -26,8 +26,11 @@
 
 import { Ap3xError, PublicKey } from '@ap3x/solana-core';
 
+import { systemTransfer } from './system-transfer';
 import { TransactionError } from './transaction-assembler';
 import type { Instruction } from './transaction-assembler';
+
+export { SYSTEM_PROGRAM_ID } from './system-transfer';
 
 // ---------------------------------------------------------------------------
 // Protocol constants
@@ -39,21 +42,6 @@ import type { Instruction } from './transaction-assembler';
  * at compose time rather than at submission.
  */
 export const JITO_MAX_TXS_PER_BUNDLE = 5;
-
-/**
- * SystemProgram pubkey — 32 zero bytes, base58 encoded as
- * `11111111111111111111111111111111`. Used as the `programId` for the tip
- * instruction.
- */
-export const SYSTEM_PROGRAM_ID: PublicKey = PublicKey.fromBytes(
-  new Uint8Array(32),
-);
-
-/** SystemInstruction::Transfer discriminator inside the SystemProgram enum. */
-const SYSTEM_TRANSFER_DISCRIMINATOR = 2;
-
-/** Byte length of the encoded SystemProgram transfer instruction data. */
-const TRANSFER_DATA_LENGTH = 12;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -138,22 +126,7 @@ export class JitoBundleBuilder {
       );
     }
 
-    // SystemProgram Transfer instruction data — little-endian throughout.
-    //   [0..4)  u32 discriminator = 2 (Transfer)
-    //   [4..12) u64 lamports
-    const data = new Uint8Array(TRANSFER_DATA_LENGTH);
-    const view = new DataView(data.buffer);
-    view.setUint32(0, SYSTEM_TRANSFER_DISCRIMINATOR, true);
-    view.setBigUint64(4, lamports, true);
-
-    return {
-      programId: SYSTEM_PROGRAM_ID,
-      keys: [
-        { pubkey: from, isSigner: true, isWritable: true },
-        { pubkey: tipAccount, isSigner: false, isWritable: true },
-      ],
-      data,
-    };
+    return systemTransfer(from, tipAccount, lamports);
   }
 }
 
