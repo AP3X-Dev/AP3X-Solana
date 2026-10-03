@@ -79,10 +79,14 @@ export interface DecompiledMessage {
 
 /**
  * Turn a message back into instructions, for checking what a signed
- * transaction actually does. Only messages without address lookup tables
- * can be resolved this way; one that uses them throws `tx.malformed`.
+ * transaction actually does. A message that uses address lookup tables needs
+ * their contents in `lookupTables` (table address → its addresses, from the
+ * chain); without them it throws `tx.malformed`.
  */
-export function decompileMessage(messageBytes: Uint8Array): DecompiledMessage {
+export function decompileMessage(
+  messageBytes: Uint8Array,
+  lookupTables: ReadonlyMap<string, readonly PublicKey[]> = new Map(),
+): DecompiledMessage {
   const versioned = ((messageBytes[0] ?? 0) & VERSIONED) !== 0;
   if (versioned && (messageBytes[0]! & 0x7f) !== 0) malformed(`unsupported message version ${messageBytes[0]! & 0x7f}`);
   let off = versioned ? 1 : 0;
@@ -94,45 +98,81 @@ export function decompileMessage(messageBytes: Uint8Array): DecompiledMessage {
   off += nKeys.size;
   if (required > nKeys.value || off + nKeys.value * PUBLIC_KEY_LENGTH > messageBytes.length) malformed('account keys run past the end');
   const accountKeys: PublicKey[] = [];
-  for (let i = 0; i < nKeys.value; i++) accountKeys.push(PublicKey.fromBytes(messageBytes.slice(off + i * PUBLIC_KEY_LENGTH, off + (i + 1) * PUBLIC_KEY_LENGTH)));
+  for (let i = 0; i < nKeys.value; i++) accountKeys.push(readKey(messageBytes, off + i * PUBLIC_KEY_LENGTH));
   off += nKeys.value * PUBLIC_KEY_LENGTH;
 
   if (off + 32 > messageBytes.length) malformed('blockhash runs past the end');
   const recentBlockhash = base58.encode(messageBytes.slice(off, off + 32));
   off += 32;
 
-  const isSigner = (i: number) => i < required;
-  const isWritable = (i: number) =>
-    i < required ? i < required - readonlySigned : i < nKeys.value - readonlyUnsigned;
-
+  // Instructions reference accounts by index; lookup-table accounts come
+  // after the static ones, so read everything before resolving.
   const nIx = readCompact(messageBytes, off);
   off += nIx.size;
-  const instructions: Instruction[] = [];
+  const raw: Array<{ program: number; accounts: number[]; data: Uint8Array }> = [];
   for (let n = 0; n < nIx.value; n++) {
-    const programIndex = messageBytes[off++];
-    if (programIndex === undefined || programIndex >= nKeys.value) malformed(`instruction ${n} program index out of range`);
+    const program = messageBytes[off++];
+    if (program === undefined || program >= nKeys.value) malformed(`instruction ${n} program index out of range`);
     const nAcc = readCompact(messageBytes, off);
     off += nAcc.size;
     if (off + nAcc.value > messageBytes.length) malformed(`instruction ${n} accounts run past the end`);
-    const keys = Array.from(messageBytes.slice(off, off + nAcc.value), (i) => {
-      if (i >= nKeys.value) malformed(`instruction ${n} account index ${i} needs a lookup table`);
-      return { pubkey: accountKeys[i]!, isSigner: isSigner(i), isWritable: isWritable(i) };
-    });
+    const accounts = Array.from(messageBytes.slice(off, off + nAcc.value));
     off += nAcc.value;
     const len = readCompact(messageBytes, off);
     off += len.size;
     if (off + len.value > messageBytes.length) malformed(`instruction ${n} data runs past the end`);
-    instructions.push({ programId: accountKeys[programIndex]!, keys, data: messageBytes.slice(off, off + len.value) });
+    raw.push({ program, accounts, data: messageBytes.slice(off, off + len.value) });
     off += len.value;
   }
 
+  const lookedUpWritable: PublicKey[] = [];
+  const lookedUpReadonly: PublicKey[] = [];
   if (versioned) {
-    const lookups = readCompact(messageBytes, off);
-    off += lookups.size;
-    if (lookups.value !== 0) malformed('message uses address lookup tables');
+    const nLookups = readCompact(messageBytes, off);
+    off += nLookups.size;
+    for (let t = 0; t < nLookups.value; t++) {
+      if (off + PUBLIC_KEY_LENGTH > messageBytes.length) malformed('lookup table runs past the end');
+      const table = readKey(messageBytes, off);
+      off += PUBLIC_KEY_LENGTH;
+      const addresses = lookupTables.get(table.toBase58());
+      if (!addresses) malformed(`message uses address lookup tables: ${table.toBase58()} was not provided`);
+      for (const into of [lookedUpWritable, lookedUpReadonly]) {
+        const n = readCompact(messageBytes, off);
+        off += n.size;
+        if (off + n.value > messageBytes.length) malformed('lookup indexes run past the end');
+        for (const i of messageBytes.slice(off, off + n.value)) {
+          const address = addresses[i];
+          if (!address) malformed(`lookup table ${table.toBase58()} has no index ${i}`);
+          into.push(address);
+        }
+        off += n.value;
+      }
+    }
   }
   if (off !== messageBytes.length) malformed('trailing bytes after the message');
+
+  const resolved = [...accountKeys, ...lookedUpWritable, ...lookedUpReadonly];
+  const isSigner = (i: number) => i < required;
+  const isWritable = (i: number) =>
+    i < required
+      ? i < required - readonlySigned
+      : i < nKeys.value
+        ? i < nKeys.value - readonlyUnsigned
+        : i < nKeys.value + lookedUpWritable.length;
+  const instructions: Instruction[] = raw.map((r, n) => ({
+    programId: accountKeys[r.program]!,
+    keys: r.accounts.map((i) => {
+      const pubkey = resolved[i];
+      if (!pubkey) malformed(`instruction ${n} account index ${i} out of range`);
+      return { pubkey, isSigner: isSigner(i), isWritable: isWritable(i) };
+    }),
+    data: r.data,
+  }));
   return { instructions, accountKeys, signers: accountKeys.slice(0, required), recentBlockhash };
+}
+
+function readKey(bytes: Uint8Array, at: number): PublicKey {
+  return PublicKey.fromBytes(bytes.slice(at, at + PUBLIC_KEY_LENGTH));
 }
 
 function readCompact(bytes: Uint8Array, offset: number): { value: number; size: number } {

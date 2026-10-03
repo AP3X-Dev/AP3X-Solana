@@ -166,6 +166,30 @@ describe('decompileMessage', () => {
     ]);
   });
 
+  it('resolves accounts through a lookup table it is given', async () => {
+    const payer = await signer(1);
+    const table = PublicKey.fromBytes(new Uint8Array(32).fill(40));
+    const viaTable = [41, 42, 43].map((n) => PublicKey.fromBytes(new Uint8Array(32).fill(n)));
+    const ix = {
+      programId: TO,
+      keys: [
+        { pubkey: payer.address, isSigner: true, isWritable: true },
+        { pubkey: viaTable[0]!, isSigner: false, isWritable: true },
+        { pubkey: viaTable[2]!, isSigner: false, isWritable: false },
+      ],
+      data: Uint8Array.from([7]),
+    };
+    const alt = { deactivationSlot: (1n << 64n) - 1n, lastExtendedSlot: 0n, lastExtendedSlotStartIndex: 0, authority: null, addresses: viaTable };
+    const { messageBytes } = compileUnsigned({ instructions: [ix], payer: payer.address, recentBlockhash: BLOCKHASH, alts: [{ key: table, alt }] });
+    expect(() => decompileMessage(messageBytes)).toThrow(/lookup tables/);
+    const d = decompileMessage(messageBytes, new Map([[table.toBase58(), viaTable]]));
+    expect(d.accountKeys.map((k) => k.toBase58())).not.toContain(viaTable[0]!.toBase58());
+    expect(d.instructions[0]!.keys.map((k) => [k.pubkey.toBase58(), k.isSigner, k.isWritable])).toEqual(
+      ix.keys.map((k) => [k.pubkey.toBase58(), k.isSigner, k.isWritable]),
+    );
+    expect(() => decompileMessage(messageBytes, new Map([[table.toBase58(), viaTable.slice(0, 1)]]))).toThrow(/no index/);
+  });
+
   it('refuses lookup tables, trailing bytes and truncation', async () => {
     const { payer, instructions } = await fixture();
     const { messageBytes } = compileUnsigned({ instructions, payer: payer.address, recentBlockhash: BLOCKHASH });
