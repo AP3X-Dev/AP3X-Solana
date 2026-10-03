@@ -225,7 +225,7 @@ export class RpcPool extends EventEmitter {
         random: this.#random,
       }),
       tracker: new LatencyTracker(),
-      health: new HealthState(),
+      health: new HealthState(this.#now),
     }));
   }
 
@@ -387,9 +387,10 @@ export class RpcPool extends EventEmitter {
 
   /**
    * Round-robin selection of the next non-unhealthy endpoint. Advances the
-   * cursor by one per call. Returns `undefined` if every endpoint is
-   * unhealthy. Prefers healthy over degraded — we only consider degraded
-   * endpoints when no healthy peer exists at the current cursor position.
+   * cursor by one per call. Prefers healthy over degraded — we only consider
+   * degraded endpoints when no healthy peer exists at the current cursor
+   * position. When every endpoint is unhealthy, one whose probe is due gets a
+   * single call (see `HealthState.takeProbe`); otherwise returns `undefined`.
    */
   #pickEndpoint(): EndpointState | undefined {
     const total = this.#states.length;
@@ -407,6 +408,15 @@ export class RpcPool extends EventEmitter {
       const idx = (this.#cursor + i) % total;
       const state = this.#states[idx]!;
       if (state.health.state() === 'degraded') {
+        this.#cursor = (idx + 1) % total;
+        return state;
+      }
+    }
+    // Last: an unhealthy endpoint whose probe is due, so it can recover.
+    for (let i = 0; i < total; i++) {
+      const idx = (this.#cursor + i) % total;
+      const state = this.#states[idx]!;
+      if (state.health.takeProbe()) {
         this.#cursor = (idx + 1) % total;
         return state;
       }

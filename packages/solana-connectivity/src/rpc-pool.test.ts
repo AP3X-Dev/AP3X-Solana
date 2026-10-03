@@ -551,3 +551,42 @@ describe('RpcPool — network error handling', () => {
     expect(events[0]!.retryCount).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Recovery from unhealthy
+// ---------------------------------------------------------------------------
+
+describe('RpcPool — unhealthy endpoints recover', () => {
+  it('probes an unhealthy endpoint after a cooldown, backing off while it keeps failing', async () => {
+    let up = false;
+    let hits = 0;
+    server.use(
+      http.post('http://helius.test', () => {
+        hits++;
+        return up ? HttpResponse.json({ jsonrpc: '2.0', id: 1, result: 7 }) : new HttpResponse('x', { status: 429 });
+      }),
+    );
+    const clock = mkClock(1_000_000);
+    const { delay } = mkDelayRecorder();
+    const pool = new RpcPool({ endpoints: [HELIUS], timeoutMs: 1_000, retry: { attempts: 1, backoffMs: 1, jitter: 0 }, delay, now: clock.now });
+
+    for (let i = 0; i < 10; i++) await pool.call('getSlot', []).catch(() => undefined);
+    expect(hits).toBe(10);
+    // Down: nothing reaches the endpoint until the cooldown has passed.
+    await expect(pool.call('getSlot', [])).rejects.toMatchObject({ message: expect.stringMatching(/no healthy endpoints/) });
+    expect(hits).toBe(10);
+
+    clock.advance(5_000);
+    await pool.call('getSlot', []).catch(() => undefined); // the probe, still failing
+    expect(hits).toBe(11);
+    clock.advance(5_000);
+    await pool.call('getSlot', []).catch(() => undefined); // cooldown doubled to 10 s: no call
+    expect(hits).toBe(11);
+
+    up = true;
+    clock.advance(5_000);
+    expect(await pool.call('getSlot', [])).toBe(7);
+    expect(await pool.call('getSlot', [])).toBe(7);
+    expect(hits).toBe(13);
+  });
+});

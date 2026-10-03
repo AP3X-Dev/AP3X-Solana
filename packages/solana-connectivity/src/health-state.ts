@@ -10,7 +10,11 @@
  *                     endpoints when any healthy peer exists; `pinForWrite`
  *                     still considers it if no healthy peer exists).
  *   - `unhealthy`  — 10 consecutive errors. Endpoint is removed from
- *                     selection entirely until a success resets it.
+ *                     selection, except for one probe call once a cooldown
+ *                     has passed ({@link takeProbe}): 5 s, doubling after
+ *                     each failed probe up to 60 s. A successful probe resets
+ *                     it. Without probes nothing could ever succeed on it, and
+ *                     a single-endpoint pool would stay down for good.
  *
  * A single success — regardless of current state — snaps the endpoint back to
  * `healthy` and resets the error counter. This is deliberately aggressive:
@@ -29,8 +33,16 @@ export class HealthState {
   /** Consecutive errors that trigger the `* → unhealthy` transition. */
   static readonly UNHEALTHY_THRESHOLD = 10;
 
+  /** First wait before probing an unhealthy endpoint; doubles per failed probe. */
+  static readonly PROBE_COOLDOWN_MS = 5_000;
+  static readonly MAX_PROBE_COOLDOWN_MS = 60_000;
+
   #consecutiveErrors = 0;
   #state: HealthStateName = 'healthy';
+  #cooldownMs = HealthState.PROBE_COOLDOWN_MS;
+  #probeAt = 0;
+
+  constructor(private readonly now: () => number = Date.now) {}
 
   /** Current state. */
   state(): HealthStateName {
@@ -44,6 +56,7 @@ export class HealthState {
   recordSuccess(): HealthStateName {
     this.#consecutiveErrors = 0;
     this.#state = 'healthy';
+    this.#cooldownMs = HealthState.PROBE_COOLDOWN_MS;
     return this.#state;
   }
 
@@ -63,11 +76,25 @@ export class HealthState {
   recordError(): HealthStateName {
     this.#consecutiveErrors += 1;
     if (this.#consecutiveErrors >= HealthState.UNHEALTHY_THRESHOLD) {
+      // Entering unhealthy waits the base cooldown; a failed probe doubles it.
+      if (this.#state === 'unhealthy') this.#cooldownMs = Math.min(this.#cooldownMs * 2, HealthState.MAX_PROBE_COOLDOWN_MS);
+      this.#probeAt = this.now() + this.#cooldownMs;
       this.#state = 'unhealthy';
     } else if (this.#consecutiveErrors >= HealthState.DEGRADE_THRESHOLD) {
       this.#state = 'degraded';
     }
     return this.#state;
+  }
+
+  /**
+   * True when an unhealthy endpoint is due one probe call. Claims it: the
+   * next probe waits another cooldown, so concurrent callers send one probe,
+   * not a burst.
+   */
+  takeProbe(): boolean {
+    if (this.#state !== 'unhealthy' || this.now() < this.#probeAt) return false;
+    this.#probeAt = this.now() + this.#cooldownMs;
+    return true;
   }
 
   /**
