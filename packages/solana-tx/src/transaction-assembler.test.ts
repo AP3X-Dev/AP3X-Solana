@@ -314,9 +314,10 @@ describe('assemble — with ALTs', () => {
 
     // Instruction:
     //   payer (ws), recipient (wus), altAddr1 (writable, via ALT),
-    //   altAddr0 (readonly, via ALT), programId = altAddr2 (readonly, via ALT).
+    //   altAddr0 (readonly, via ALT), programId = altAddr2.
     //
-    // We use altAddr2 as programId just to prove programs can also be ALT-resolved.
+    // altAddr2 is in the ALT but is the invoked program, so it must stay a
+    // static key: the runtime cannot load a program through a lookup table.
     const ix: Instruction = {
       programId: altAddr2,
       keys: [
@@ -339,32 +340,31 @@ describe('assemble — with ALTs', () => {
     const tx = decodeSignedTransaction(signedTransaction);
     const m = tx.message;
 
-    // Static keys contain ONLY payer + recipient. altAddr0/1/2 live in the ALT.
-    expect(m.staticAccountKeys).toHaveLength(2);
+    // Static keys: payer, recipient, and the program. altAddr0/1 live in the ALT.
+    expect(m.staticAccountKeys).toHaveLength(3);
     expect(m.staticAccountKeys[0]!.equals(payer.address)).toBe(true);
     expect(m.staticAccountKeys[1]!.equals(recipient.address)).toBe(true);
+    expect(m.staticAccountKeys[2]!.equals(altAddr2)).toBe(true);
 
-    // Header: 1 signature (payer), no readonly-signed, no readonly-unsigned (recipient is writable non-signer).
+    // Header: 1 signature (payer), no readonly-signed, one readonly-unsigned (the program).
     expect(m.numRequiredSignatures).toBe(1);
     expect(m.numReadonlySigned).toBe(0);
-    expect(m.numReadonlyUnsigned).toBe(0);
+    expect(m.numReadonlyUnsigned).toBe(1);
 
-    // ALT lookups: one entry, writable=[1] (altAddr1), readonly=[0, 2] (altAddr0 then altAddr2 the programId).
+    // ALT lookups: one entry, writable=[1] (altAddr1), readonly=[0] (altAddr0).
     expect(m.addressTableLookups).toHaveLength(1);
     const lookup = m.addressTableLookups[0]!;
     expect(lookup.accountKey.equals(altKey) || lookup.accountKey.equals(altAddr0) || true).toBe(
       true,
     );
     expect(lookup.writableIndexes).toEqual([1]);
-    // Readonly ALT indexes include altAddr0 (index 0) and altAddr2 (programId, index 2).
-    // Order depends on resolution order — see assembler doc; we just check set semantics.
-    expect(new Set(lookup.readonlyIndexes)).toEqual(new Set([0, 2]));
+    expect(lookup.readonlyIndexes).toEqual([0]);
 
-    // accountKeys: 2 static + writable-alt + readonly-alt (order: writable first)
-    expect(accountKeys).toHaveLength(2 + 1 + 2);
+    // accountKeys: 3 static + writable-alt + readonly-alt (order: writable first)
+    expect(accountKeys).toHaveLength(3 + 1 + 1);
     expect(accountKeys[0]!.equals(payer.address)).toBe(true);
     expect(accountKeys[1]!.equals(recipient.address)).toBe(true);
-    expect(accountKeys[2]!.equals(altAddr1)).toBe(true); // writable-alt first
+    expect(accountKeys[3]!.equals(altAddr1)).toBe(true); // writable-alt first
   });
 
   it('uses the provided ALT accountKey as the lookup key', async () => {

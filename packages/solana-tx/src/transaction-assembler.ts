@@ -316,6 +316,10 @@ function compileAccounts(
   // instruction mentions it as readonly.
   upsert(payer, true, true);
 
+  // Invoked program IDs must be static keys: the runtime cannot load a
+  // program through an address lookup table.
+  const invoked = new Set(instructions.map((ix) => ix.programId.toBase58()));
+
   for (const ix of instructions) {
     // Program IDs are readonly non-signers — the runtime enforces this.
     upsert(ix.programId, false, false);
@@ -330,7 +334,7 @@ function compileAccounts(
   // order and take the first address match; ties are resolved by the earliest
   // ALT. Signers are skipped (they MUST stay in staticAccountKeys).
   for (const acc of accounts) {
-    if (acc.isSigner) continue;
+    if (acc.isSigner || invoked.has(acc.pubkey.toBase58())) continue;
     for (const { key: altKey, alt } of alts) {
       const idx = alt.addresses.findIndex((a) => a.equals(acc.pubkey));
       if (idx >= 0) {

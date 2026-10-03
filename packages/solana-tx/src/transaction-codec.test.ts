@@ -190,6 +190,23 @@ describe('decompileMessage', () => {
     expect(() => decompileMessage(messageBytes, new Map([[table.toBase58(), viaTable.slice(0, 1)]]))).toThrow(/no index/);
   });
 
+  it('never resolves an invoked program through a lookup table', async () => {
+    const payer = await signer(1);
+    const table = PublicKey.fromBytes(new Uint8Array(32).fill(40));
+    const other = PublicKey.fromBytes(new Uint8Array(32).fill(41));
+    // The program is in the table, and also an account of another instruction.
+    const alt = { deactivationSlot: (1n << 64n) - 1n, lastExtendedSlot: 0n, lastExtendedSlotStartIndex: 0, authority: null, addresses: [TO, other] };
+    const instructions = [
+      { programId: TO, keys: [{ pubkey: other, isSigner: false, isWritable: false }], data: Uint8Array.from([1]) },
+      { programId: COMPUTE_BUDGET_PROGRAM_ID, keys: [{ pubkey: TO, isSigner: false, isWritable: false }], data: Uint8Array.from([2]) },
+    ];
+    const { messageBytes, accountKeys } = compileUnsigned({ instructions, payer: payer.address, recentBlockhash: BLOCKHASH, alts: [{ key: table, alt }] });
+    const staticKeys = decompileMessage(messageBytes, new Map([[table.toBase58(), alt.addresses]])).accountKeys.map((k) => k.toBase58());
+    expect(staticKeys).toContain(TO.toBase58());
+    expect(staticKeys).not.toContain(other.toBase58()); // a plain account still goes through the table
+    expect(accountKeys.map((k) => k.toBase58())).toContain(other.toBase58());
+  });
+
   it('refuses lookup tables, trailing bytes and truncation', async () => {
     const { payer, instructions } = await fixture();
     const { messageBytes } = compileUnsigned({ instructions, payer: payer.address, recentBlockhash: BLOCKHASH });
