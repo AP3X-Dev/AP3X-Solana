@@ -1,0 +1,40 @@
+name: Carbon Oracle
+
+# Weekly cross-check of the TypeScript Pump/PumpSwap decoders against SevenLabs
+# Carbon, an independent decoder (ap3x-engine PRP §11). Fails on any field the
+# two decode differently: the early warning for a program upgrade the vendored
+# IDLs have not caught up with. Fields only one side knows are reported, not failed.
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  oracle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the TypeScript decoders
+        run: pnpm --filter "@ap3x/pumpfun-events..." build
+
+      # rustup on the runner honours tools/carbon-oracle/rust-toolchain.toml.
+      - name: Build the Carbon harness
+        run: cargo build --release --manifest-path tools/carbon-oracle/Cargo.toml
+
+      - name: Compare
+        run: node tools/carbon-oracle/compare.mjs packages/pumpfun-events/tests/fixtures/*.jsonl.gz

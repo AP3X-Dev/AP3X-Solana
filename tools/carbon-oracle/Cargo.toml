@@ -1,0 +1,14 @@
+[package]
+name = "carbon-oracle"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base64 = "0.23.1"
+bs58 = "0.5.1"
+carbon-core = "2"
+carbon-pump-swap-decoder = { version = "2.0.0", features = ["serde"] }
+carbon-pumpfun-decoder = { version = "2.0.0", features = ["serde"] }
+flate2 = "1.1.10"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
