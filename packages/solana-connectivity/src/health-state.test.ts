@@ -104,3 +104,18 @@ describe('HealthState — recovery via single success', () => {
     expect(h.recordSuccess()).toBe('healthy');
   });
 });
+
+describe('HealthState — rate limits', () => {
+  it('a streak of 429s degrades the endpoint but never takes it out of selection', () => {
+    const h = new HealthState(() => 0);
+    for (let i = 0; i < 4; i++) expect(h.recordRateLimit()).toBe('healthy');
+    for (let i = 0; i < 50; i++) expect(h.recordRateLimit()).toBe('degraded');
+    expect(h.recordSuccess()).toBe('healthy');
+  });
+
+  it('real failures after rate limits still count toward unhealthy', () => {
+    const h = new HealthState(() => 0);
+    for (let i = 0; i < 9; i++) h.recordRateLimit();
+    expect(h.recordError()).toBe('unhealthy');
+  });
+});

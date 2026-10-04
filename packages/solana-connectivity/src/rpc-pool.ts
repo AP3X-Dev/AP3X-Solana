@@ -354,8 +354,9 @@ export class RpcPool extends EventEmitter {
         // Transport failure: record latency + error on the health state,
         // classify, advance to the next endpoint.
         state.tracker.record(latencyMs);
-        state.health.recordError();
         lastErrorClass = this.#classifyError(err);
+        if (lastErrorClass === 'rate_limited') state.health.recordRateLimit();
+        else state.health.recordError();
 
         const isLastAttempt = attempt === this.#retry.attempts;
         if (!isLastAttempt) {

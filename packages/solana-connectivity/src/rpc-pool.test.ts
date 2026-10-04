@@ -556,6 +556,25 @@ describe('RpcPool — network error handling', () => {
 // Recovery from unhealthy
 // ---------------------------------------------------------------------------
 
+describe('RpcPool — rate limits', () => {
+  it('a burst of 429s never takes the only endpoint out: the next call still goes to it', async () => {
+    let limited = true;
+    let hits = 0;
+    server.use(
+      http.post('http://helius.test', () => {
+        hits++;
+        return limited ? new HttpResponse('x', { status: 429 }) : HttpResponse.json({ jsonrpc: '2.0', id: 1, result: 7 });
+      }),
+    );
+    const { delay } = mkDelayRecorder();
+    const pool = new RpcPool({ endpoints: [HELIUS], timeoutMs: 1_000, retry: { attempts: 1, backoffMs: 1, jitter: 0 }, delay, now: mkClock(1_000_000).now });
+    for (let i = 0; i < 30; i++) await expect(pool.call('getSlot', [])).rejects.toMatchObject({ message: 'HTTP 429' });
+    expect(hits).toBe(30); // every call reached the node: none was refused as "no healthy endpoints"
+    limited = false;
+    expect(await pool.call('getSlot', [])).toBe(7);
+  });
+});
+
 describe('RpcPool — unhealthy endpoints recover', () => {
   it('probes an unhealthy endpoint after a cooldown, backing off while it keeps failing', async () => {
     let up = false;
@@ -563,7 +582,7 @@ describe('RpcPool — unhealthy endpoints recover', () => {
     server.use(
       http.post('http://helius.test', () => {
         hits++;
-        return up ? HttpResponse.json({ jsonrpc: '2.0', id: 1, result: 7 }) : new HttpResponse('x', { status: 429 });
+        return up ? HttpResponse.json({ jsonrpc: '2.0', id: 1, result: 7 }) : new HttpResponse('x', { status: 503 });
       }),
     );
     const clock = mkClock(1_000_000);

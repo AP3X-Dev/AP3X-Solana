@@ -87,6 +87,18 @@ export class HealthState {
   }
 
   /**
+   * Record a rate limit (HTTP 429). The node is up and asking us to slow down:
+   * a streak can degrade it (peers are preferred) but never makes it unhealthy,
+   * which would turn throttling into a full outage of a single-endpoint pool
+   * for up to a minute (measured: a burst of reads did exactly that).
+   */
+  recordRateLimit(): HealthStateName {
+    this.#consecutiveErrors += 1;
+    if (this.#state === 'healthy' && this.#consecutiveErrors >= HealthState.DEGRADE_THRESHOLD) this.#state = 'degraded';
+    return this.#state;
+  }
+
+  /**
    * True when an unhealthy endpoint is due one probe call. Claims it: the
    * next probe waits another cooldown, so concurrent callers send one probe,
    * not a burst.
