@@ -86,6 +86,8 @@ export interface DecompiledMessage {
 export function decompileMessage(
   messageBytes: Uint8Array,
   lookupTables: ReadonlyMap<string, readonly PublicKey[]> = new Map(),
+  /** The lookup-table addresses already resolved, in message order (a transaction's `meta.loadedAddresses`): used instead of `lookupTables`. */
+  loaded?: { writable: readonly PublicKey[]; readonly: readonly PublicKey[] },
 ): DecompiledMessage {
   const versioned = ((messageBytes[0] ?? 0) & VERSIONED) !== 0;
   if (versioned && (messageBytes[0]! & 0x7f) !== 0) malformed(`unsupported message version ${messageBytes[0]! & 0x7f}`);
@@ -127,6 +129,7 @@ export function decompileMessage(
 
   const lookedUpWritable: PublicKey[] = [];
   const lookedUpReadonly: PublicKey[] = [];
+  const lookedUpCounts = [0, 0];
   if (versioned) {
     const nLookups = readCompact(messageBytes, off);
     off += nLookups.size;
@@ -134,20 +137,29 @@ export function decompileMessage(
       if (off + PUBLIC_KEY_LENGTH > messageBytes.length) malformed('lookup table runs past the end');
       const table = readKey(messageBytes, off);
       off += PUBLIC_KEY_LENGTH;
-      const addresses = lookupTables.get(table.toBase58());
-      if (!addresses) malformed(`message uses address lookup tables: ${table.toBase58()} was not provided`);
-      for (const into of [lookedUpWritable, lookedUpReadonly]) {
+      const addresses = loaded ? null : lookupTables.get(table.toBase58());
+      if (!loaded && !addresses) malformed(`message uses address lookup tables: ${table.toBase58()} was not provided`);
+      for (const [k, into] of [lookedUpWritable, lookedUpReadonly].entries()) {
         const n = readCompact(messageBytes, off);
         off += n.size;
         if (off + n.value > messageBytes.length) malformed('lookup indexes run past the end');
-        for (const i of messageBytes.slice(off, off + n.value)) {
-          const address = addresses[i];
-          if (!address) malformed(`lookup table ${table.toBase58()} has no index ${i}`);
-          into.push(address);
+        if (loaded) {
+          lookedUpCounts[k]! += n.value;
+        } else {
+          for (const i of messageBytes.slice(off, off + n.value)) {
+            const address = addresses![i];
+            if (!address) malformed(`lookup table ${table.toBase58()} has no index ${i}`);
+            into.push(address);
+          }
         }
         off += n.value;
       }
     }
+  }
+  if (loaded) {
+    if (loaded.writable.length !== lookedUpCounts[0] || loaded.readonly.length !== lookedUpCounts[1]) malformed('loaded addresses do not match the message lookups');
+    lookedUpWritable.push(...loaded.writable);
+    lookedUpReadonly.push(...loaded.readonly);
   }
   if (off !== messageBytes.length) malformed('trailing bytes after the message');
 

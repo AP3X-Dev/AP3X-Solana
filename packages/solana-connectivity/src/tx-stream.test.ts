@@ -87,7 +87,11 @@ describe('subscribeHeliusTransactions', () => {
     s.notify('transactionNotification', {
       signature: 'sig1',
       slot: 42,
-      transaction: { transaction: ['AA==', 'base64'], meta: { err: null, logMessages: ['Program X invoke [1]'] } },
+      transaction: {
+        transaction: ['AQID', 'base64'],
+        meta: { err: null, logMessages: ['Program X invoke [1]'], fee: 5000, loadedAddresses: { writable: ['W'], readonly: ['R'] },
+          innerInstructions: [{ index: 0, instructions: [{ programIdIndex: 2, accounts: [0, 1], data: '3Bxs4' }] }] },
+      },
     });
     s.notify('transactionNotification', { signature: 'sig2', slot: 43, transaction: { meta: { logMessages: null } } });
     await until(() => got.length === 2);
@@ -95,6 +99,10 @@ describe('subscribeHeliusTransactions', () => {
     expect(got[0]).toMatchObject({ signature: 'sig1', slot: 42, err: null, logs: ['Program X invoke [1]'] });
     expect(got[0]!.receivedAt).toBeGreaterThan(0);
     expect(got[1]).toMatchObject({ signature: 'sig2', logs: [] });
+    // The whole transaction comes through with the parts of its meta that matter; none when the stream sent none.
+    expect(got[0]!.full).toEqual({ bytes: Uint8Array.from([1, 2, 3]), fee: 5000, loadedAddresses: { writable: ['W'], readonly: ['R'] },
+      innerInstructions: [{ index: 0, instructions: [{ programIdIndex: 2, accounts: [0, 1], data: '3Bxs4' }] }] });
+    expect(got[1]!.full).toBeUndefined();
   });
 
   it('rejects when the provider refuses the subscription, so the caller can fall back', async () => {

@@ -46,6 +46,7 @@ export { subscribeHeliusTransactions, subscribeProgramLogs } from './tx-stream';
 export type {
   StreamCommitment,
   StreamedTransaction,
+  FullTransaction,
   TxStream,
   TxStreamHandlers,
   TxStreamOptions,

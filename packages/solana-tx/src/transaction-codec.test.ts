@@ -190,6 +190,28 @@ describe('decompileMessage', () => {
     expect(() => decompileMessage(messageBytes, new Map([[table.toBase58(), viaTable.slice(0, 1)]]))).toThrow(/no index/);
   });
 
+  it('resolves through addresses already loaded (from a stored transaction meta), and checks they fit', async () => {
+    const payer = await signer(1);
+    const table = PublicKey.fromBytes(new Uint8Array(32).fill(40));
+    const viaTable = [41, 42, 43].map((n) => PublicKey.fromBytes(new Uint8Array(32).fill(n)));
+    const ix = {
+      programId: TO,
+      keys: [
+        { pubkey: payer.address, isSigner: true, isWritable: true },
+        { pubkey: viaTable[0]!, isSigner: false, isWritable: true },
+        { pubkey: viaTable[2]!, isSigner: false, isWritable: false },
+      ],
+      data: Uint8Array.from([7]),
+    };
+    const alt = { deactivationSlot: (1n << 64n) - 1n, lastExtendedSlot: 0n, lastExtendedSlotStartIndex: 0, authority: null, addresses: viaTable };
+    const { messageBytes } = compileUnsigned({ instructions: [ix], payer: payer.address, recentBlockhash: BLOCKHASH, alts: [{ key: table, alt }] });
+    const d = decompileMessage(messageBytes, new Map(), { writable: [viaTable[0]!], readonly: [viaTable[2]!] });
+    expect(d.instructions[0]!.keys.map((k) => [k.pubkey.toBase58(), k.isSigner, k.isWritable])).toEqual(
+      ix.keys.map((k) => [k.pubkey.toBase58(), k.isSigner, k.isWritable]),
+    );
+    expect(() => decompileMessage(messageBytes, new Map(), { writable: [], readonly: [viaTable[2]!] })).toThrow(/do not match/);
+  });
+
   it('never resolves an invoked program through a lookup table', async () => {
     const payer = await signer(1);
     const table = PublicKey.fromBytes(new Uint8Array(32).fill(40));

@@ -34,6 +34,20 @@ export interface StreamedTransaction {
   logs: string[];
   /** Local receive time, epoch ms. */
   receivedAt: number;
+  /** The whole transaction, when the stream sends it (`transactionSubscribe`; `logsSubscribe` does not). */
+  full?: FullTransaction;
+}
+
+/** A transaction as the chain stored it: wire bytes plus the parts of its meta that say who paid and what ran. */
+export interface FullTransaction {
+  /** Wire bytes: signatures, then the message. */
+  bytes: Uint8Array;
+  /** Network fee paid, lamports. */
+  fee: number;
+  /** Lookup-table addresses the message loaded, resolved, in order (base58). */
+  loadedAddresses: { writable: string[]; readonly: string[] };
+  /** Inner (CPI) instructions by top-level index; account and program indexes into the resolved keys, data base58. */
+  innerInstructions: Array<{ index: number; instructions: Array<{ programIdIndex: number; accounts: number[]; data: string }> }>;
 }
 
 export interface TxStreamHandlers {
@@ -93,10 +107,29 @@ export function subscribeHeliusTransactions(
     const r = result as {
       signature: string;
       slot: number;
-      transaction?: { meta?: { err?: unknown; logMessages?: string[] | null } };
+      transaction?: {
+        transaction?: [string, string] | string;
+        meta?: {
+          err?: unknown;
+          logMessages?: string[] | null;
+          fee?: number;
+          loadedAddresses?: { writable?: string[]; readonly?: string[] } | null;
+          innerInstructions?: FullTransaction['innerInstructions'] | null;
+        };
+      };
     };
     const meta = r.transaction?.meta;
-    return { signature: r.signature, slot: r.slot, err: meta?.err ?? null, logs: meta?.logMessages ?? [] };
+    const wire = r.transaction?.transaction;
+    const b64 = Array.isArray(wire) ? wire[0] : wire;
+    const full: FullTransaction | undefined = b64 && meta
+      ? {
+          bytes: Uint8Array.from(Buffer.from(b64, 'base64')),
+          fee: meta.fee ?? 0,
+          loadedAddresses: { writable: meta.loadedAddresses?.writable ?? [], readonly: meta.loadedAddresses?.readonly ?? [] },
+          innerInstructions: meta.innerInstructions ?? [],
+        }
+      : undefined;
+    return { signature: r.signature, slot: r.slot, err: meta?.err ?? null, logs: meta?.logMessages ?? [], ...(full ? { full } : {}) };
   });
 }
 
