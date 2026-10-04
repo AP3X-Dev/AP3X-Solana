@@ -136,10 +136,14 @@ export function feeRecipientFor(global: GlobalState, curve: Pick<CurveState, 'is
   return r;
 }
 
+/**
+ * One account's bytes at `confirmed`: the RPC default is `finalized`, ~13 s
+ * behind, which makes quotes stale and a fresh curve or pool "not found".
+ */
 export async function fetchAccountData(rpcPool: RpcPool, address: PublicKey, label: string): Promise<Uint8Array> {
   const response = (await rpcPool.call('getAccountInfo', [
     address.toBase58(),
-    { encoding: 'base64' },
+    { encoding: 'base64', commitment: 'confirmed' },
   ])) as { value: { data: [string, string] } | null };
   if (!response?.value?.data) {
     throw new AccountLayoutError(label, new Uint8Array(), 'account not found');

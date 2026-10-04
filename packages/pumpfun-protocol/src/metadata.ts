@@ -68,7 +68,7 @@ export async function metadata(
   const { address: pda } = getMetadataPda(mint);
   const response = (await rpcPool.call('getAccountInfo', [
     pda.toBase58(),
-    { encoding: 'base64' },
+    { encoding: 'base64', commitment: 'confirmed' },
   ])) as { value: { data: [string, string] } | null };
 
   if (!response?.value?.data) {

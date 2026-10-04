@@ -19,9 +19,10 @@ describe('creator', () => {
 
     const call = vi.fn(async (method: string, params: unknown) => {
       expect(method).toBe('getAccountInfo');
-      // Parameters form: [pubkey, { encoding: 'base64' }]
+      // Parameters form: [pubkey, { encoding: 'base64', commitment: 'confirmed' }] (the default, finalized, is ~13 s stale)
       const asArr = params as unknown[];
       expect(asArr[0]).toBe(curvePda.toBase58());
+      expect(asArr[1]).toEqual({ encoding: 'base64', commitment: 'confirmed' });
       return { value: { data: [base64Data, 'base64'] } };
     });
 
