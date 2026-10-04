@@ -13,6 +13,7 @@ import {
   ACCOUNT_TYPE_OFFSET,
   EXTENSION_TYPE,
   TLV_START_OFFSET,
+  decodeTokenMetadataExtension,
 } from './token-2022-extensions';
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from './program-ids';
 
@@ -439,5 +440,23 @@ describe('decodeAccountExtensions', () => {
     expect(
       mintResult.extensions.mintCloseAuthority?.closeAuthority?.toBase58(),
     ).toBe(SAMPLE_AUTHORITY.toBase58());
+  });
+});
+
+describe('decodeTokenMetadataExtension', () => {
+  const enc = (s: string) => { const b = new TextEncoder().encode(s); const n = new Uint8Array(4); new DataView(n.buffer).setUint32(0, b.length, true); return [...n, ...b]; };
+  const mint = new Uint8Array(32).fill(7);
+  it('reads name, symbol, uri and extra fields; a zero update authority is none', () => {
+    const count = new Uint8Array(4); new DataView(count.buffer).setUint32(0, 1, true);
+    const payload = Uint8Array.from([...new Uint8Array(32), ...mint, ...enc('Cat Coin'), ...enc('CAT'), ...enc('https://ipfs.io/ipfs/x'), ...count, ...enc('k'), ...enc('v')]);
+    const m = decodeTokenMetadataExtension(payload);
+    expect(m).toMatchObject({ updateAuthority: null, name: 'Cat Coin', symbol: 'CAT', uri: 'https://ipfs.io/ipfs/x', additionalMetadata: [['k', 'v']] });
+    expect(Uint8Array.from(m.mint.toBuffer())).toEqual(mint);
+  });
+  it('accepts a payload with no extra-field list, and rejects a truncated one', () => {
+    const payload = Uint8Array.from([...new Uint8Array(32).fill(1), ...mint, ...enc('A'), ...enc('B'), ...enc('u')]);
+    expect(decodeTokenMetadataExtension(payload)).toMatchObject({ name: 'A', symbol: 'B', uri: 'u', additionalMetadata: [] });
+    expect(decodeTokenMetadataExtension(payload).updateAuthority).not.toBeNull();
+    expect(() => decodeTokenMetadataExtension(payload.subarray(0, 70))).toThrow(/too short/);
   });
 });

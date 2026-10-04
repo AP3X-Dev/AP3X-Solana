@@ -457,3 +457,52 @@ function readTlvEntries(data: Uint8Array): TlvEntry[] {
   }
   return out;
 }
+
+/** A Token-2022 `TokenMetadata` extension: the token's own name, symbol and metadata URI (pump.fun's newer tokens keep theirs here). */
+export interface TokenMetadataExt {
+  updateAuthority: PublicKey | null;
+  mint: PublicKey;
+  name: string;
+  symbol: string;
+  uri: string;
+  additionalMetadata: Array<[string, string]>;
+}
+
+/**
+ * Decode a `TokenMetadata` extension payload (type 18): update authority (32,
+ * zero = none), mint (32), then name, symbol and uri as u32-length UTF-8
+ * strings, then a u32-counted list of key/value string pairs.
+ */
+export function decodeTokenMetadataExtension(data: Uint8Array): TokenMetadataExt {
+  let off = 0;
+  const need = (n: number) => {
+    if (off + n > data.length) throw new Error(`decodeTokenMetadataExtension: payload too short at ${off}`);
+  };
+  const key = () => {
+    need(32);
+    const k = data.subarray(off, off + 32);
+    off += 32;
+    return k;
+  };
+  const u32 = () => {
+    need(4);
+    const v = data[off]! | (data[off + 1]! << 8) | (data[off + 2]! << 16) | (data[off + 3]! << 24);
+    off += 4;
+    return v >>> 0;
+  };
+  const str = () => {
+    const n = u32();
+    need(n);
+    const s = new TextDecoder().decode(data.subarray(off, off + n));
+    off += n;
+    return s;
+  };
+  const authority = key();
+  const mint = PublicKey.fromBytes(key());
+  const name = str();
+  const symbol = str();
+  const uri = str();
+  const additionalMetadata: Array<[string, string]> = [];
+  if (off < data.length) for (let i = u32(); i > 0; i--) additionalMetadata.push([str(), str()]);
+  return { updateAuthority: authority.every((b) => b === 0) ? null : PublicKey.fromBytes(authority), mint, name, symbol, uri, additionalMetadata };
+}

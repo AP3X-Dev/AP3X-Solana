@@ -22,6 +22,7 @@ export {
   ACCOUNT_TYPE_ACCOUNT,
   ACCOUNT_TYPE_UNINITIALIZED,
   TLV_START_OFFSET,
+  decodeTokenMetadataExtension,
 } from './token-2022-extensions';
 export type {
   UnknownExtension,
@@ -32,6 +33,7 @@ export type {
   DefaultAccountStateExt,
   TransferFee,
   DecodedExtensions,
+  TokenMetadataExt,
 } from './token-2022-extensions';
 
 export {
