@@ -48,6 +48,13 @@ export {
   JITO_MAX_TXS_PER_BUNDLE,
 } from './jito-bundle';
 export { SYSTEM_PROGRAM_ID, systemTransfer, parseSystemTransfer } from './system-transfer';
+export {
+  ADDRESS_LOOKUP_TABLE_PROGRAM_ID,
+  createLookupTable,
+  extendLookupTable,
+  MAX_EXTEND_ADDRESSES,
+  MAX_LOOKUP_TABLE_ADDRESSES,
+} from './lookup-table-instructions';
 export type { SystemTransfer } from './system-transfer';
 export type { Bundle } from './jito-bundle';
 export { decodeTransaction, decompileMessage, messageSigners, verifyTransactionSignatures } from './transaction-codec';

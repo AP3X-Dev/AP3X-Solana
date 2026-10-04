@@ -115,6 +115,7 @@ export type TransactionErrorCode =
   | 'invalid_tip'
   | 'invalid_transfer'
   | 'invalid_compute_budget'
+  | 'invalid_lookup_table'
   | 'malformed';
 
 /** Structured payload for {@link TransactionError}. */
