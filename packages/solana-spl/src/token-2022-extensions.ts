@@ -85,16 +85,23 @@ export const EXTENSION_TYPE = Object.freeze({
   InterestBearingConfig: 10,
   CpiGuard: 11,
   PermanentDelegate: 12,
-  TransferHook: 13,
-  TransferHookAccount: 14,
-  ConfidentialTransferFeeConfig: 15,
-  ConfidentialTransferFeeAmount: 16,
-  MetadataPointer: 17,
-  TokenMetadata: 18,
-  GroupPointer: 19,
-  TokenGroup: 20,
-  GroupMemberPointer: 21,
-  TokenGroupMember: 22,
+  // spl-token-2022's ExtensionType enum: NonTransferableAccount is 13, so everything after it is one higher
+  // than a list that leaves it out (MetadataPointer 18 holds a 64-byte pointer; the metadata itself is 19).
+  NonTransferableAccount: 13,
+  TransferHook: 14,
+  TransferHookAccount: 15,
+  ConfidentialTransferFeeConfig: 16,
+  ConfidentialTransferFeeAmount: 17,
+  MetadataPointer: 18,
+  TokenMetadata: 19,
+  GroupPointer: 20,
+  TokenGroup: 21,
+  GroupMemberPointer: 22,
+  TokenGroupMember: 23,
+  ConfidentialMintBurn: 24,
+  ScaledUiAmount: 25,
+  Pausable: 26,
+  PausableAccount: 27,
 } as const);
 
 /** A TLV entry we parsed but didn't decode into a structured shape. */
@@ -469,7 +476,7 @@ export interface TokenMetadataExt {
 }
 
 /**
- * Decode a `TokenMetadata` extension payload (type 18): update authority (32,
+ * Decode a `TokenMetadata` extension payload (type 19): update authority (32,
  * zero = none), mint (32), then name, symbol and uri as u32-length UTF-8
  * strings, then a u32-counted list of key/value string pairs.
  */

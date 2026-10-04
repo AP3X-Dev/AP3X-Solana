@@ -460,3 +460,10 @@ describe('decodeTokenMetadataExtension', () => {
     expect(() => decodeTokenMetadataExtension(payload.subarray(0, 70))).toThrow(/too short/);
   });
 });
+
+describe('extension type numbers (spl-token-2022 ExtensionType)', () => {
+  it('match the program: pointer 18, metadata 19, and the rest around them', () => {
+    expect([EXTENSION_TYPE.NonTransferableAccount, EXTENSION_TYPE.TransferHook, EXTENSION_TYPE.MetadataPointer, EXTENSION_TYPE.TokenMetadata, EXTENSION_TYPE.TokenGroupMember])
+      .toEqual([13, 14, 18, 19, 23]);
+  });
+});
