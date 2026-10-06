@@ -17,7 +17,7 @@ import {
   PUMPFUN_FEES_PROGRAM_ID,
   PUMPFUN_PUMPSWAP_PROGRAM_ID,
 } from '@ap3x/pumpfun-events';
-import { AccountLayoutError, fetchAccountData } from './curve/state.js';
+import { AccountLayoutError, fetchAccountData, fetchAccountDataBatch } from './curve/state.js';
 
 export interface VerifiedDeploy {
   programId: PublicKey;
@@ -72,10 +72,24 @@ export async function checkProgramUpgrades(
   rpcPool: RpcPool,
   verified: readonly VerifiedDeploy[] = VERIFIED_DEPLOYS,
 ): Promise<UpgradeCheck[]> {
-  return Promise.all(
-    verified.map(async ({ programId, slot }) => {
-      const deployedSlot = await programDeploySlot(rpcPool, programId);
-      return { programId, verifiedSlot: slot, deployedSlot, upgraded: deployedSlot !== slot };
-    }),
-  );
+  const requested = verified.map(entry => ({ ...entry })), checks: UpgradeCheck[] = [];
+  // Preserve arbitrary caller lists without exceeding the RPC's 100-account limit.
+  for (let start = 0; start < requested.length; start += 100) {
+    const batch = requested.slice(start, start + 100);
+    const programs = await fetchAccountDataBatch(rpcPool, batch.map(entry => ({ address: entry.programId, label: 'Program' })));
+    const addresses = programs.map(program => {
+      if (program.length < 36 || new DataView(program.buffer, program.byteOffset, program.byteLength).getUint32(0, true) !== PROGRAM_TAG)
+        throw new AccountLayoutError('Program', program, 'not an upgradeable program account');
+      return { address: PublicKey.fromBytes(program.slice(4, 36)), label: 'ProgramData' };
+    });
+    const headers = await fetchAccountDataBatch(rpcPool, addresses, { offset: 0, length: 12 });
+    for (const [index, header] of headers.entries()) {
+      const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+      if (header.length < 12 || view.getUint32(0, true) !== PROGRAM_DATA_TAG)
+        throw new AccountLayoutError('ProgramData', header, 'not a ProgramData account');
+      const deployedSlot = view.getBigUint64(4, true), entry = batch[index]!;
+      checks.push({ programId: entry.programId, verifiedSlot: entry.slot, deployedSlot, upgraded: deployedSlot !== entry.slot });
+    }
+  }
+  return checks;
 }

@@ -151,6 +151,31 @@ export async function fetchAccountData(rpcPool: RpcPool, address: PublicKey, lab
   return Uint8Array.from(Buffer.from(response.value.data[0], 'base64'));
 }
 
+/** Fresh ordered account reads in one response; no cache or fallback requests. */
+export async function fetchAccountDataBatch(rpcPool: RpcPool, accounts: readonly { address: PublicKey; label: string }[],
+  dataSlice?: { offset: number; length: number }): Promise<Uint8Array[]> {
+  const requested = accounts.map(account => ({ ...account }));
+  if (requested.length > 100 || requested.some(a => !a.label.trim())) throw new Error('account batch bounds');
+  if (dataSlice && (!Number.isSafeInteger(dataSlice.offset) || !Number.isSafeInteger(dataSlice.length)
+    || dataSlice.offset < 0 || dataSlice.length < 0)) throw new Error('account batch slice');
+  if (!requested.length) return [];
+  const response = await rpcPool.call('getMultipleAccounts', [requested.map(a => a.address.toBase58()),
+    { encoding: 'base64', commitment: 'confirmed', ...(dataSlice ? { dataSlice: { ...dataSlice } } : {}) }]) as {
+      value?: Array<{ data?: unknown } | null> };
+  if (!Array.isArray(response?.value) || response.value.length !== requested.length)
+    throw new AccountLayoutError('account batch', new Uint8Array(), 'response length mismatch');
+  return response.value.map((account, index) => {
+    const label = requested[index]!.label;
+    if (!account) throw new AccountLayoutError(label, new Uint8Array(), 'account not found');
+    const data = account.data;
+    if (!Array.isArray(data) || data.length !== 2 || typeof data[0] !== 'string' || data[1] !== 'base64')
+      throw new AccountLayoutError(label, new Uint8Array(), 'account encoding');
+    const bytes = Buffer.from(data[0], 'base64');
+    if (bytes.toString('base64') !== data[0]) throw new AccountLayoutError(label, new Uint8Array(), 'account encoding');
+    return Uint8Array.from(bytes);
+  });
+}
+
 export async function curveState(rpcPool: RpcPool, mint: PublicKey): Promise<CurveState> {
   const bytes = await fetchAccountData(rpcPool, deriveBondingCurvePda(mint).address, 'BondingCurve');
   return decodeCurveState(bytes, mint);

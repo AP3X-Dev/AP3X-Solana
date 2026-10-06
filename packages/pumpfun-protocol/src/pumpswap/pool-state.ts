@@ -21,7 +21,7 @@ import {
   PUMPFUN_PUMPSWAP_PROGRAM_ID,
 } from '@ap3x/pumpfun-events';
 import type { RpcPool } from '@ap3x/solana-connectivity';
-import { AccountLayoutError, fetchAccountData } from '../curve/state.js';
+import { AccountLayoutError, fetchAccountData, fetchAccountDataBatch } from '../curve/state.js';
 
 export const WSOL_MINT = /* @__PURE__ */ PublicKey.fromBase58('So11111111111111111111111111111111111111112');
 
@@ -136,14 +136,14 @@ function tokenAmount(bytes: Uint8Array, label: string): bigint {
 
 export async function pumpSwapPoolState(rpcPool: RpcPool, pool: PublicKey): Promise<PumpSwapPoolState> {
   const decoded = decodePumpSwapPool(await fetchAccountData(rpcPool, pool, 'Pool'), pool);
-  const [base, quote] = await Promise.all([
-    fetchAccountData(rpcPool, decoded.poolBaseTokenAccount, 'pool base token account'),
-    fetchAccountData(rpcPool, decoded.poolQuoteTokenAccount, 'pool quote token account'),
+  const [base, quote] = await fetchAccountDataBatch(rpcPool, [
+    { address: decoded.poolBaseTokenAccount, label: 'pool base token account' },
+    { address: decoded.poolQuoteTokenAccount, label: 'pool quote token account' },
   ]);
-  const quoteVaultBalance = tokenAmount(quote, 'quote');
+  const quoteVaultBalance = tokenAmount(quote!, 'quote');
   return {
     ...decoded,
-    baseReserves: tokenAmount(base, 'base'),
+    baseReserves: tokenAmount(base!, 'base'),
     quoteReserves: quoteVaultBalance + decoded.virtualQuoteReserves,
     quoteVaultBalance,
   };

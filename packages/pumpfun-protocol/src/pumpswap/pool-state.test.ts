@@ -85,7 +85,9 @@ describe('pumpSwapPoolState', () => {
       [key(10).toBase58(), tokenAccountBytes(1_000n)],
       [key(11).toBase58(), tokenAccountBytes(2_000n)],
     ]);
-    const call = vi.fn(async (_m: string, params: unknown[]) => accountInfo(accounts.get(params[0] as string)!));
+    const call = vi.fn(async (method: string, params: unknown[]) => method === 'getMultipleAccounts'
+      ? { value: (params[0] as string[]).map(address => accountInfo(accounts.get(address)!).value) }
+      : accountInfo(accounts.get(params[0] as string)!));
     const state = await pumpSwapPoolState({ call } as never, key(1));
     expect(state.baseReserves).toBe(1_000n);
     expect(state.quoteReserves).toBe(2_000n);
@@ -101,7 +103,9 @@ describe('pumpSwapPoolState', () => {
       [key(10).toBase58(), tokenAccountBytes(1_000n)],
       [key(11).toBase58(), tokenAccountBytes(2_000n)],
     ]);
-    const call = vi.fn(async (_m: string, params: unknown[]) => accountInfo(accounts.get(params[0] as string)!));
+    const call = vi.fn(async (method: string, params: unknown[]) => method === 'getMultipleAccounts'
+      ? { value: (params[0] as string[]).map(address => accountInfo(accounts.get(address)!).value) }
+      : accountInfo(accounts.get(params[0] as string)!));
     const state = await pumpSwapPoolState({ call } as never, key(1));
     expect(state.virtualQuoteReserves).toBe(17_584_505_288n);
     expect(state.quoteVaultBalance).toBe(2_000n);
