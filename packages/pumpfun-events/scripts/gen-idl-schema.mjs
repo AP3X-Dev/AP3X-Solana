@@ -15,13 +15,13 @@ const PROGRAMS = [
     key: 'pump',
     file: 'pump.json',
     instructions: ['create', 'create_v2', 'buy', 'buy_exact_sol_in', 'sell', 'buy_v2', 'buy_exact_quote_in_v2', 'sell_v2'],
-    accounts: ['BondingCurve', 'Global'],
+    accounts: ['BondingCurve', 'Global', 'UserVolumeAccumulator'],
   },
   {
     key: 'pumpAmm',
     file: 'pump_amm.json',
     instructions: ['buy', 'buy_exact_quote_in', 'sell'],
-    accounts: ['Pool', 'GlobalConfig'],
+    accounts: ['Pool', 'GlobalConfig', 'UserVolumeAccumulator'],
   },
 ];
 
