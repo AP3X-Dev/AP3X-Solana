@@ -61,6 +61,12 @@ export function derivePumpSwapPoolPda(
 }
 
 export interface PumpSwapPool {
+  creatorFeeBps?: bigint;
+  canEditCreatorFee?: boolean;
+  isHolderReward?: boolean;
+  protocolFees?: bigint;
+  creatorFees?: bigint;
+  accountLayoutVersion?: string;
   pool: PublicKey;
   index: number;
   creator: PublicKey;
@@ -94,10 +100,10 @@ export interface PumpSwapPoolState extends PumpSwapPool {
   quoteVaultBalance: bigint;
 }
 
-function decode(name: string, bytes: Uint8Array, required: string[]): Record<string, unknown> {
+function decode(name: string, bytes: Uint8Array, required: string[], options: { layoutVersion?: string } = {}): Record<string, unknown> {
   let f: Record<string, unknown>;
   try {
-    f = decodeIdlAccount(PUMP_AMM_SCHEMA, name, bytes);
+    f = decodeIdlAccount(PUMP_AMM_SCHEMA, name, bytes, options);
   } catch (err) {
     throw new AccountLayoutError(name, bytes, (err as Error).message);
   }
@@ -106,12 +112,22 @@ function decode(name: string, bytes: Uint8Array, required: string[]): Record<str
   return f;
 }
 
-export function decodePumpSwapPool(bytes: Uint8Array, pool: PublicKey): PumpSwapPool {
+function presentPoolFields(fields: Record<string, unknown>): Partial<PumpSwapPool> {
+  const result: Record<string, unknown> = {};
+  for (const name of ['creatorFeeBps', 'canEditCreatorFee', 'isHolderReward', 'protocolFees', 'creatorFees']) {
+    if (name in fields) result[name] = fields[name];
+  }
+  return result;
+}
+
+export function decodePumpSwapPool(bytes: Uint8Array, pool: PublicKey, options: { layoutVersion?: string } = {}): PumpSwapPool {
   const f = decode('Pool', bytes, [
     'index', 'creator', 'baseMint', 'quoteMint', 'lpMint', 'poolBaseTokenAccount',
     'poolQuoteTokenAccount', 'lpSupply', 'coinCreator',
-  ]);
+  ], options);
   return {
+    ...(f['layoutVersion'] ? { accountLayoutVersion: String(f['layoutVersion']) } : {}),
+    ...presentPoolFields(f),
     pool,
     index: f['index'] as number,
     creator: f['creator'] as PublicKey,

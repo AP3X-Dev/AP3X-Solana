@@ -1,0 +1,29 @@
+{
+  "sourceCommit": "e0687ae9b7e064a0f54efc7297c65eecfbba3a8f",
+  "name": "QuoteControl",
+  "fields": [
+    {
+      "name": "admin",
+      "type": "pubkey"
+    },
+    {
+      "name": "_reserved",
+      "type": {
+        "array": [
+          "u8",
+          64
+        ]
+      }
+    },
+    {
+      "name": "mints",
+      "type": {
+        "vec": {
+          "defined": {
+            "name": "QuoteControlMint"
+          }
+        }
+      }
+    }
+  ]
+}

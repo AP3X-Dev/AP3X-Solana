@@ -48,7 +48,15 @@ export interface IdlInstructionSchema {
 }
 
 /** Account layouts share the event shape: discriminator + ordered fields. */
-export type IdlAccountLayoutSchema = IdlEventSchema;
+export interface IdlAccountLayoutSchema extends IdlEventSchema {
+  /** Non-append upgrades need explicit layout provenance; byte length can be identical. */
+  legacyFields?: IdlField[];
+  nonAppendVersion?: string;
+  previousFieldCount?: number;
+  previousVersion?: string;
+  /** Retained old allocations include reserved padding; it is not evidence of new fields. */
+  legacyPaddedSizes?: number[];
+}
 
 export interface IdlProgramSchema {
   address: string;
