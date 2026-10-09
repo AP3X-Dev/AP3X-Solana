@@ -72,7 +72,11 @@ export function buildIdlInstruction(
   keys.push(...remaining);
 
   const disc = Uint8Array.from(ix.discriminator.match(/../g)!.map((h) => parseInt(h, 16)));
-  const body = encodeIdlFields(ix.args, args, schema.types);
+  // partial_fill is optional on-chain as a trailing tuple bool. Preserve older builder bytes
+  // when the caller did not request it, while retaining explicit true/false when supplied.
+  const fields = ix.args.filter((field, index) => !(index === ix.args.length - 1
+    && field.name === 'partial_fill' && args['partialFill'] === undefined));
+  const body = encodeIdlFields(fields, args, schema.types);
   const data = new Uint8Array(disc.length + body.length);
   data.set(disc, 0);
   data.set(body, disc.length);

@@ -4,8 +4,8 @@
  * must confirm a signed transaction is exactly the message it built and is
  * properly signed before relaying it.
  *
- * Handles v0 and legacy messages (the header is the same after v0's version
- * byte). Malformed input throws {@link TransactionError} `tx.malformed`.
+ * Reads legacy, v0 and v1 messages; assembly remains v0. Malformed input
+ * throws {@link TransactionError} `tx.malformed`.
  */
 
 import { base58, compactU16, PublicKey } from '@ap3x/solana-core';
@@ -13,6 +13,7 @@ import * as ed from '@noble/ed25519';
 
 import { TransactionError } from './transaction-assembler';
 import type { Instruction } from './transaction-assembler';
+import { parseV1Message, type V1TransactionConfig } from './transaction-v1';
 
 const SIGNATURE_LENGTH = 64;
 const PUBLIC_KEY_LENGTH = 32;
@@ -24,6 +25,16 @@ export interface DecodedTransaction {
 }
 
 export function decodeTransaction(bytes: Uint8Array): DecodedTransaction {
+  if (bytes[0] === 0x81) {
+    if (bytes.length < 42 || bytes.length > 4096) malformed('invalid v1 transaction size');
+    const required = bytes[1]!;
+    const messageEnd = bytes.length - required * SIGNATURE_LENGTH;
+    if (messageEnd < 42) malformed('v1 signatures run past the end');
+    const messageBytes = bytes.slice(0, messageEnd);
+    parseV1Message(messageBytes);
+    return { messageBytes, signatures: Array.from({ length: required }, (_, index) =>
+      bytes.slice(messageEnd + index * SIGNATURE_LENGTH, messageEnd + (index + 1) * SIGNATURE_LENGTH)) };
+  }
   const count = readCompact(bytes, 0);
   const sigEnd = count.size + count.value * SIGNATURE_LENGTH;
   if (sigEnd >= bytes.length) malformed('signature section runs past the end');
@@ -37,6 +48,7 @@ export function decodeTransaction(bytes: Uint8Array): DecodedTransaction {
 
 /** The accounts that must sign `messageBytes`, in signature-slot order. */
 export function messageSigners(messageBytes: Uint8Array): PublicKey[] {
+  if (messageBytes[0] === 0x81) return parseV1Message(messageBytes).signers;
   let off = (messageBytes[0] ?? 0) & VERSIONED ? 1 : 0;
   if (off === 1 && (messageBytes[0]! & 0x7f) !== 0) malformed(`unsupported message version ${messageBytes[0]! & 0x7f}`);
   const required = messageBytes[off];
@@ -68,6 +80,9 @@ export async function verifyTransactionSignatures(bytes: Uint8Array): Promise<bo
 }
 
 export interface DecompiledMessage {
+  /** Present for v1, whose fee/resource requests are encoded in its header. */
+  version?: 1;
+  config?: V1TransactionConfig;
   /** Instructions with signer/writable flags from the message header. */
   instructions: Instruction[];
   /** Static account keys, in message order (the fee payer first). */
@@ -89,6 +104,10 @@ export function decompileMessage(
   /** The lookup-table addresses already resolved, in message order (a transaction's `meta.loadedAddresses`): used instead of `lookupTables`. */
   loaded?: { writable: readonly PublicKey[]; readonly: readonly PublicKey[] },
 ): DecompiledMessage {
+  if (messageBytes[0] === 0x81) {
+    if (loaded && (loaded.writable.length || loaded.readonly.length)) malformed('v1 does not use loaded addresses');
+    return parseV1Message(messageBytes);
+  }
   const versioned = ((messageBytes[0] ?? 0) & VERSIONED) !== 0;
   if (versioned && (messageBytes[0]! & 0x7f) !== 0) malformed(`unsupported message version ${messageBytes[0]! & 0x7f}`);
   let off = versioned ? 1 : 0;

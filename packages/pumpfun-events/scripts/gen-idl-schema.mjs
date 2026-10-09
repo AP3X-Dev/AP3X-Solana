@@ -14,14 +14,14 @@ const PROGRAMS = [
   {
     key: 'pump',
     file: 'pump.json',
-    instructions: ['create', 'create_v2', 'buy', 'buy_exact_sol_in', 'sell', 'buy_v2', 'buy_exact_quote_in_v2', 'sell_v2'],
-    accounts: ['BondingCurve', 'Global'],
+    instructions: ['create', 'create_v2', 'buy', 'buy_exact_sol_in', 'sell', 'buy_v2', 'buy_exact_quote_in_v2', 'sell_v2', 'buy_v3', 'buy_exact_quote_in_v3', 'sell_v3', 'multi_hop_curve_swap'],
+    accounts: ['BondingCurve', 'Global', 'UserVolumeAccumulator', 'QuoteControl'],
   },
   {
     key: 'pumpAmm',
     file: 'pump_amm.json',
-    instructions: ['buy', 'buy_exact_quote_in', 'sell'],
-    accounts: ['Pool', 'GlobalConfig'],
+    instructions: ['buy', 'buy_exact_quote_in', 'sell', 'buy_v2', 'buy_exact_quote_in_v2', 'sell_v2', 'multi_hop_swap'],
+    accounts: ['Pool', 'GlobalConfig', 'UserVolumeAccumulator'],
   },
 ];
 
@@ -47,7 +47,16 @@ for (const p of PROGRAMS) {
     const t = types.get(name);
     if (!a || !t) throw new Error(`${p.file}: account ${name} missing`);
     collectDefined(t.type, needed);
-    return { name, discriminator: hex(a.discriminator), fields: t.type.fields };
+    const prefixCount = { BondingCurve: 13, Global: 29, Pool: 16 }[name];
+    const paddedSizes = { BondingCurve: [151], Pool: [301] }[name];
+    return { name, discriminator: hex(a.discriminator), fields: t.type.fields,
+      ...(prefixCount ? { previousFieldCount: prefixCount, previousVersion: 'e0687ae9' } : {}),
+      ...(paddedSizes ? { legacyPaddedSizes: paddedSizes } : {}),
+      ...(name === 'QuoteControl' && p.key === 'pump' ? {
+        legacyFields: JSON.parse(readFileSync(join(root, 'idl', 'legacy-quote-control.json'), 'utf8')).fields,
+        nonAppendVersion: '2293f9a6',
+      } : {}) };
+
   });
   // Close over nested defined types.
   let grew = true;
@@ -77,6 +86,16 @@ for (const p of PROGRAMS) {
       args: ix.args,
     };
   });
+  // Instruction arguments can also introduce nested defined types.
+  let instructionTypesGrew = true;
+  while (instructionTypesGrew) {
+    instructionTypesGrew = false;
+    for (const name of [...needed]) {
+      const before = needed.size;
+      collectDefined(types.get(name)?.type, needed);
+      if (needed.size !== before) instructionTypesGrew = true;
+    }
+  }
   schema[p.key] = {
     address: idl.address,
     events,

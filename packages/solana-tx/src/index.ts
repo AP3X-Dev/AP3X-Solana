@@ -58,6 +58,7 @@ export {
 export type { SystemTransfer } from './system-transfer';
 export type { Bundle } from './jito-bundle';
 export { decodeTransaction, decompileMessage, messageSigners, verifyTransactionSignatures } from './transaction-codec';
+export type { V1TransactionConfig } from './transaction-v1';
 export type { DecodedTransaction, DecompiledMessage } from './transaction-codec';
 export {
   COMPUTE_BUDGET_PROGRAM_ID,

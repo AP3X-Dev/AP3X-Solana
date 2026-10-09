@@ -75,7 +75,7 @@ describe('decodeTransaction / messageSigners', () => {
   it('throws tx.malformed on truncated or unsupported input', () => {
     expect(() => decodeTransaction(Uint8Array.from([2, ...new Uint8Array(64)]))).toThrow(/malformed|signature section/);
     expect(() => decodeTransaction(new Uint8Array(0))).toThrow(TransactionError);
-    expect(() => messageSigners(Uint8Array.from([0x81, 1, 0, 0]))).toThrow(/unsupported message version/);
+    expect(() => messageSigners(Uint8Array.from([0x82, 1, 0, 0]))).toThrow(/unsupported message version/);
     expect(() => messageSigners(Uint8Array.from([0x80, 2, 0, 0, 1, ...new Uint8Array(32)]))).toThrow(/run past/);
     expect(() => messageSigners(new Uint8Array(0))).toThrow(/header missing/);
   });

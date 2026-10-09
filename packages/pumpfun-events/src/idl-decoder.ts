@@ -145,6 +145,7 @@ export function decodeIdlAccount(
   schema: IdlProgramSchema,
   accountName: string,
   data: Uint8Array,
+  options: { layoutVersion?: string } = {},
 ): Record<string, unknown> {
   const layout = schema.accounts.find((a) => a.name === accountName);
   if (!layout) throw new Error(`account ${accountName} not in schema`);
@@ -153,11 +154,28 @@ export function decodeIdlAccount(
   }
   const c = new Cursor(data.subarray(8));
   const fields: Record<string, unknown> = {};
-  for (const f of layout.fields) {
-    // Accounts created before a field was appended end early; keep the prefix.
+  if (options.layoutVersion && (layout.legacyFields || layout.previousFieldCount !== undefined)
+    && options.layoutVersion !== 'e0687ae9' && options.layoutVersion !== '2293f9a6') {
+    throw new Error(`${accountName}: unknown layout version`);
+  }
+  const paddedAmbiguity = !options.layoutVersion && layout.legacyPaddedSizes?.includes(data.length);
+  const olderPrefix = layout.previousFieldCount !== undefined
+    && (options.layoutVersion === layout.previousVersion || paddedAmbiguity);
+  const selected = layout.legacyFields && options.layoutVersion !== layout.nonAppendVersion
+    ? layout.legacyFields : olderPrefix ? layout.fields.slice(0, layout.previousFieldCount) : layout.fields;
+  for (const f of selected) {
+    // Only a clean field boundary is an older prefix. Mid-field truncation stays malformed.
     if (c.done) break;
     fields[camelCase(f.name)] = decodeValue(c, f.type, schema.types);
   }
+  if (layout.legacyFields && !options.layoutVersion) {
+    // admin and mints retain their exact offsets. Reserved bytes cannot establish a new administrator.
+    const common = new Set(layout.fields.filter(field => field.name !== '_reserved')
+      .map(field => camelCase(field.name)));
+    for (const name of Object.keys(fields)) if (!common.has(name)) delete fields[name];
+    fields['layoutVersion'] = 'unknown';
+  }
+  if (paddedAmbiguity) fields['layoutVersion'] = 'unknown';
   return fields;
 }
 

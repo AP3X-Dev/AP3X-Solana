@@ -21,7 +21,7 @@ import {
   PUMPFUN_PUMPSWAP_PROGRAM_ID,
 } from '@ap3x/pumpfun-events';
 import type { RpcPool } from '@ap3x/solana-connectivity';
-import { AccountLayoutError, fetchAccountData } from '../curve/state.js';
+import { AccountLayoutError, fetchAccountData, fetchAccountDataBatch } from '../curve/state.js';
 
 export const WSOL_MINT = /* @__PURE__ */ PublicKey.fromBase58('So11111111111111111111111111111111111111112');
 
@@ -61,6 +61,12 @@ export function derivePumpSwapPoolPda(
 }
 
 export interface PumpSwapPool {
+  creatorFeeBps?: bigint;
+  canEditCreatorFee?: boolean;
+  isHolderReward?: boolean;
+  protocolFees?: bigint;
+  creatorFees?: bigint;
+  accountLayoutVersion?: string;
   pool: PublicKey;
   index: number;
   creator: PublicKey;
@@ -94,10 +100,10 @@ export interface PumpSwapPoolState extends PumpSwapPool {
   quoteVaultBalance: bigint;
 }
 
-function decode(name: string, bytes: Uint8Array, required: string[]): Record<string, unknown> {
+function decode(name: string, bytes: Uint8Array, required: string[], options: { layoutVersion?: string } = {}): Record<string, unknown> {
   let f: Record<string, unknown>;
   try {
-    f = decodeIdlAccount(PUMP_AMM_SCHEMA, name, bytes);
+    f = decodeIdlAccount(PUMP_AMM_SCHEMA, name, bytes, options);
   } catch (err) {
     throw new AccountLayoutError(name, bytes, (err as Error).message);
   }
@@ -106,12 +112,22 @@ function decode(name: string, bytes: Uint8Array, required: string[]): Record<str
   return f;
 }
 
-export function decodePumpSwapPool(bytes: Uint8Array, pool: PublicKey): PumpSwapPool {
+function presentPoolFields(fields: Record<string, unknown>): Partial<PumpSwapPool> {
+  const result: Record<string, unknown> = {};
+  for (const name of ['creatorFeeBps', 'canEditCreatorFee', 'isHolderReward', 'protocolFees', 'creatorFees']) {
+    if (name in fields) result[name] = fields[name];
+  }
+  return result;
+}
+
+export function decodePumpSwapPool(bytes: Uint8Array, pool: PublicKey, options: { layoutVersion?: string } = {}): PumpSwapPool {
   const f = decode('Pool', bytes, [
     'index', 'creator', 'baseMint', 'quoteMint', 'lpMint', 'poolBaseTokenAccount',
     'poolQuoteTokenAccount', 'lpSupply', 'coinCreator',
-  ]);
+  ], options);
   return {
+    ...(f['layoutVersion'] ? { accountLayoutVersion: String(f['layoutVersion']) } : {}),
+    ...presentPoolFields(f),
     pool,
     index: f['index'] as number,
     creator: f['creator'] as PublicKey,
@@ -136,14 +152,14 @@ function tokenAmount(bytes: Uint8Array, label: string): bigint {
 
 export async function pumpSwapPoolState(rpcPool: RpcPool, pool: PublicKey): Promise<PumpSwapPoolState> {
   const decoded = decodePumpSwapPool(await fetchAccountData(rpcPool, pool, 'Pool'), pool);
-  const [base, quote] = await Promise.all([
-    fetchAccountData(rpcPool, decoded.poolBaseTokenAccount, 'pool base token account'),
-    fetchAccountData(rpcPool, decoded.poolQuoteTokenAccount, 'pool quote token account'),
+  const [base, quote] = await fetchAccountDataBatch(rpcPool, [
+    { address: decoded.poolBaseTokenAccount, label: 'pool base token account' },
+    { address: decoded.poolQuoteTokenAccount, label: 'pool quote token account' },
   ]);
-  const quoteVaultBalance = tokenAmount(quote, 'quote');
+  const quoteVaultBalance = tokenAmount(quote!, 'quote');
   return {
     ...decoded,
-    baseReserves: tokenAmount(base, 'base'),
+    baseReserves: tokenAmount(base!, 'base'),
     quoteReserves: quoteVaultBalance + decoded.virtualQuoteReserves,
     quoteVaultBalance,
   };

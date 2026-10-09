@@ -20,6 +20,9 @@ const pad = (keys: PublicKey[], n: number) => [...keys, ...Array.from({ length: 
 
 function pool(accounts: Map<string, Uint8Array>) {
   const call = vi.fn(async (method: string, params: unknown[]) => {
+    if (method === 'getMultipleAccounts') return { value: (params[0] as string[]).map(address => {
+      const bytes = accounts.get(address); return bytes ? accountInfo(bytes).value : null;
+    }) };
     if (method !== 'getAccountInfo') throw new Error(`unexpected ${method}`);
     const bytes = accounts.get(params[0] as string);
     return bytes ? accountInfo(bytes) : { value: null };

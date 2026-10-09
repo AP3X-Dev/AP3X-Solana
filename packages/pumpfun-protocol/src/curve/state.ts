@@ -36,6 +36,16 @@ export interface CurveState {
   isCashbackCoin: boolean;
   /** Mayhem-mode coins must pay the reserved fee recipients (see {@link feeRecipientFor}). */
   isMayhemMode: boolean;
+  creatorFeeBps?: bigint;
+  canEditCreatorFee?: boolean;
+  isHolderReward?: boolean;
+  creatorFee?: bigint;
+  protocolFees?: bigint;
+  depth?: number;
+  initialVirtualQuoteReserves?: bigint;
+  postCompleteBaseOut?: bigint;
+  postCompleteQuoteIn?: bigint;
+  accountLayoutVersion?: string;
 }
 
 export class AccountLayoutError extends Error {
@@ -63,10 +73,10 @@ export function deriveGlobalPda(): { address: PublicKey; bump: number } {
   return findProgramAddress([new TextEncoder().encode('global')], PUMPFUN_BONDING_CURVE_PROGRAM_ID);
 }
 
-function decodeAccount(name: string, bytes: Uint8Array, required: string[]): Record<string, unknown> {
+function decodeAccount(name: string, bytes: Uint8Array, required: string[], options: { layoutVersion?: string } = {}): Record<string, unknown> {
   let fields: Record<string, unknown>;
   try {
-    fields = decodeIdlAccount(PUMP_SCHEMA, name, bytes);
+    fields = decodeIdlAccount(PUMP_SCHEMA, name, bytes, options);
   } catch (err) {
     throw new AccountLayoutError(name, bytes, (err as Error).message);
   }
@@ -75,12 +85,21 @@ function decodeAccount(name: string, bytes: Uint8Array, required: string[]): Rec
   return fields;
 }
 
-export function decodeCurveState(bytes: Uint8Array, mint: PublicKey): CurveState {
+function presentFields(fields: Record<string, unknown>, names: readonly string[]): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const name of names) if (name in fields) result[name] = fields[name];
+  return result;
+}
+
+export function decodeCurveState(bytes: Uint8Array, mint: PublicKey, options: { layoutVersion?: string } = {}): CurveState {
   const f = decodeAccount('BondingCurve', bytes, [
     'virtualTokenReserves', 'virtualQuoteReserves', 'realTokenReserves', 'realQuoteReserves',
     'tokenTotalSupply', 'complete', 'creator',
-  ]);
+  ], options);
   return {
+    ...(f['layoutVersion'] ? { accountLayoutVersion: String(f['layoutVersion']) } : {}),
+    ...presentFields(f, ['creatorFeeBps', 'canEditCreatorFee', 'isHolderReward', 'creatorFee',
+      'protocolFees', 'depth', 'initialVirtualQuoteReserves', 'postCompleteBaseOut', 'postCompleteQuoteIn']) as Partial<CurveState>,
     mint,
     bondingCurve: deriveBondingCurvePda(mint).address,
     virtualSolReserves: f['virtualQuoteReserves'] as bigint,
@@ -98,6 +117,7 @@ export function decodeCurveState(bytes: Uint8Array, mint: PublicKey): CurveState
 
 /** Decoded `Global` account — only the fields trading needs. */
 export interface GlobalState {
+  maxCurveDepth?: number;
   /** Primary fee recipient. */
   feeRecipient: PublicKey;
   /** Additional fee recipients the program accepts (zero keys removed). */
@@ -110,10 +130,11 @@ export interface GlobalState {
   creatorFeeBasisPoints: bigint;
 }
 
-export function decodeGlobalState(bytes: Uint8Array): GlobalState {
-  const f = decodeAccount('Global', bytes, ['feeRecipient', 'feeBasisPoints']);
+export function decodeGlobalState(bytes: Uint8Array, options: { layoutVersion?: string } = {}): GlobalState {
+  const f = decodeAccount('Global', bytes, ['feeRecipient', 'feeBasisPoints'], options);
   const zero = PublicKey.fromBytes(new Uint8Array(32));
   return {
+    ...presentFields(f, ['maxCurveDepth']) as Partial<GlobalState>,
     feeRecipient: f['feeRecipient'] as PublicKey,
     feeRecipients: ((f['feeRecipients'] as PublicKey[] | undefined) ?? []).filter((k) => !k.equals(zero)),
     reservedFeeRecipients: [
@@ -149,6 +170,31 @@ export async function fetchAccountData(rpcPool: RpcPool, address: PublicKey, lab
     throw new AccountLayoutError(label, new Uint8Array(), 'account not found');
   }
   return Uint8Array.from(Buffer.from(response.value.data[0], 'base64'));
+}
+
+/** Fresh ordered account reads in one response; no cache or fallback requests. */
+export async function fetchAccountDataBatch(rpcPool: RpcPool, accounts: readonly { address: PublicKey; label: string }[],
+  dataSlice?: { offset: number; length: number }): Promise<Uint8Array[]> {
+  const requested = accounts.map(account => ({ ...account }));
+  if (requested.length > 100 || requested.some(a => !a.label.trim())) throw new Error('account batch bounds');
+  if (dataSlice && (!Number.isSafeInteger(dataSlice.offset) || !Number.isSafeInteger(dataSlice.length)
+    || dataSlice.offset < 0 || dataSlice.length < 0)) throw new Error('account batch slice');
+  if (!requested.length) return [];
+  const response = await rpcPool.call('getMultipleAccounts', [requested.map(a => a.address.toBase58()),
+    { encoding: 'base64', commitment: 'confirmed', ...(dataSlice ? { dataSlice: { ...dataSlice } } : {}) }]) as {
+      value?: Array<{ data?: unknown } | null> };
+  if (!Array.isArray(response?.value) || response.value.length !== requested.length)
+    throw new AccountLayoutError('account batch', new Uint8Array(), 'response length mismatch');
+  return response.value.map((account, index) => {
+    const label = requested[index]!.label;
+    if (!account) throw new AccountLayoutError(label, new Uint8Array(), 'account not found');
+    const data = account.data;
+    if (!Array.isArray(data) || data.length !== 2 || typeof data[0] !== 'string' || data[1] !== 'base64')
+      throw new AccountLayoutError(label, new Uint8Array(), 'account encoding');
+    const bytes = Buffer.from(data[0], 'base64');
+    if (bytes.toString('base64') !== data[0]) throw new AccountLayoutError(label, new Uint8Array(), 'account encoding');
+    return Uint8Array.from(bytes);
+  });
 }
 
 export async function curveState(rpcPool: RpcPool, mint: PublicKey): Promise<CurveState> {
