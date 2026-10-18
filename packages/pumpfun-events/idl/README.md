@@ -1,7 +1,7 @@
 # Vendored pump.fun IDLs
 
 Copied from https://github.com/pump-fun/pump-public-docs/tree/main/idl
-at commit `2293f9a66c654e9fe82dc5e8f4618538f24bb35f`.
+at commit `639b87fb45c3adeffa6f7c4a1bf0cb85e392bf22`.
 
 - `pump.json` — bonding curve program `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P`
 - `pump_amm.json` — PumpSwap AMM program `pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA`
@@ -24,3 +24,10 @@ version to the account and state decoders without changing original bytes.
 Clean shorter prefixes preserve absent appended fields as unknown. Other
 mid-field truncations still fail. Tests preserve retained mainnet instruction
 fixtures and exercise current layouts separately; no live simulation was run.
+
+October 13 upstream refresh: fixed instruction/account/event layouts are unchanged.
+`create_v2` now documents the full nested quote-chain remaining accounts and error
+6109 (`QuoteChainAccountsRequired`). Generic builders require callers to supply
+these positional accounts; the IDL cannot derive them. The `2293f9a6` account
+layout selector remains valid because the binary layouts did not change.
+This source refresh does not qualify any new on-chain deployment.

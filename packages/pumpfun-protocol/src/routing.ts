@@ -16,9 +16,10 @@
  * quote here would only be approximate.
  */
 
-import type { PublicKey } from '@ap3x/solana-core';
+import { PublicKey } from '@ap3x/solana-core';
 import type { RpcPool } from '@ap3x/solana-connectivity';
 import type { Instruction } from '@ap3x/solana-tx';
+import { NATIVE_MINT } from '@ap3x/solana-spl';
 import { buildBuyExactSolIn, buildSell } from './instructions/bonding-curve.js';
 import { buildPumpSwapBuyExactQuoteIn, buildPumpSwapSell } from './instructions/pumpswap.js';
 import { curveState, feeRecipientFor, globalState } from './curve/state.js';
@@ -54,6 +55,14 @@ export interface UnifiedSellParams {
   userQuoteTokenAccount?: PublicKey;
 }
 
+/** This convenience API's amounts are lamports, never arbitrary quote-token units. */
+function requireSolQuote(quoteMint: PublicKey | undefined): void {
+  if (quoteMint && !quoteMint.equals(NATIVE_MINT)
+    && !quoteMint.equals(PublicKey.fromBytes(new Uint8Array(32)))) {
+    throw new Error('SOL routing does not support this quote mint; use explicit quote-mint builders');
+  }
+}
+
 function buybackRecipient(global: { buybackFeeRecipients: PublicKey[] }): PublicKey {
   const r = global.buybackFeeRecipients[0];
   if (!r) throw new Error('pump.fun Global has no buyback fee recipient');
@@ -65,6 +74,7 @@ async function pumpSwapContext(rpcPool: RpcPool, mint: PublicKey) {
     pumpSwapPoolState(rpcPool, derivePumpSwapPoolPda(mint).address),
     pumpSwapGlobalConfig(rpcPool),
   ]);
+  requireSolQuote(pool.quoteMint);
   const protocolFeeRecipient = protocolFeeRecipientFor(config, pool);
   const buybackFeeRecipient = config.buybackFeeRecipients[0];
   if (!buybackFeeRecipient) throw new Error('PumpSwap GlobalConfig has no buyback fee recipient');
@@ -73,6 +83,7 @@ async function pumpSwapContext(rpcPool: RpcPool, mint: PublicKey) {
 
 export async function buy(rpcPool: RpcPool, mint: PublicKey, params: UnifiedBuyParams): Promise<Instruction> {
   const state = await curveState(rpcPool, mint);
+  requireSolQuote(state.quoteMint);
   if (!state.complete) {
     const global = await globalState(rpcPool);
     return buildBuyExactSolIn({
@@ -103,6 +114,7 @@ export async function buy(rpcPool: RpcPool, mint: PublicKey, params: UnifiedBuyP
 
 export async function sell(rpcPool: RpcPool, mint: PublicKey, params: UnifiedSellParams): Promise<Instruction> {
   const state = await curveState(rpcPool, mint);
+  requireSolQuote(state.quoteMint);
   if (!state.complete) {
     const global = await globalState(rpcPool);
     return buildSell({

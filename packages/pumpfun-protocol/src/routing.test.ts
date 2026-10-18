@@ -134,3 +134,19 @@ describe('sell', () => {
     expect(u64At(ix.data, 16)).toBe(10n);
   });
 });
+
+for (const complete of [false, true]) it(`rejects custom-quote curves before SOL routing (complete=${complete})`, async () => {
+  const { rpc, accounts } = chain({ complete });
+  accounts.set(deriveBondingCurvePda(MINT).address.toBase58(),
+    bondingCurveBytes({ complete, creator: key(7), quoteMint: key(25) }));
+  await expect(buy(rpc, MINT, { user: USER, solIn: 1n, minTokensOut: 1n })).rejects.toThrow(/quote mint/);
+  await expect(sell(rpc, MINT, { user: USER, tokenAmount: 1n, minSolOut: 1n })).rejects.toThrow(/quote mint/);
+});
+
+it('rejects a non-WSOL pool even if the curve is a legacy SOL curve', async () => {
+  const { rpc, accounts, poolAddr } = chain({ complete: true });
+  accounts.set(poolAddr.toBase58(), poolBytes({ baseMint: MINT, quoteMint: key(25),
+    poolBaseTokenAccount: key(10), poolQuoteTokenAccount: key(11), coinCreator: key(12) }));
+  await expect(buy(rpc, MINT, { user: USER, solIn: 1n, minTokensOut: 1n })).rejects.toThrow(/quote mint/);
+  await expect(sell(rpc, MINT, { user: USER, tokenAmount: 1n, minSolOut: 1n })).rejects.toThrow(/quote mint/);
+});

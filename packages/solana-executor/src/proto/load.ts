@@ -12,12 +12,17 @@
  */
 
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// ESM splitting can move this module into a chunk at dist/, while the CJS
+// standalone entry remains under dist/proto/. Never resolve assets from cwd.
+const moduleDir = import.meta.url ? path.dirname(fileURLToPath(import.meta.url)) : __dirname;
+const protoDir = existsSync(path.join(moduleDir, 'searcher.proto'))
+  ? moduleDir : path.join(moduleDir, 'proto');
 
 /** Upstream commit of jito-labs/mev-protos that was vendored. */
 export const PINNED_COMMIT = '46ead86a13a55a0ef2c139db96a8ee93bf7505e3';
@@ -35,8 +40,6 @@ export function loadSearcherProto(): {
   SearcherService: grpc.ServiceClientConstructor;
   packageDefinition: protoLoader.PackageDefinition;
 } {
-  const protoDir = __dirname;
-
   const packageDefinition = protoLoader.loadSync(
     [
       path.resolve(protoDir, 'searcher.proto'),
