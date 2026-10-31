@@ -36,16 +36,16 @@
   },
   "dependencies": {
     "@ap3x/solana-core": "workspace:*",
-    "@ap3x/solana-signals": "workspace:*",
     "@ap3x/solana-executor": "workspace:*",
     "@ap3x/solana-portfolio": "workspace:*",
+    "@ap3x/solana-signals": "workspace:*",
     "@ap3x/solana-vault": "workspace:*",
     "@noble/hashes": "^1.4.0"
   },
   "devDependencies": {
+    "msw": "^2.4.0",
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.0",
-    "msw": "^2.4.0"
+    "vitest": "^4.1.12"
   }
 }

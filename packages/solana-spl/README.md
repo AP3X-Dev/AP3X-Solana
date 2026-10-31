@@ -15,6 +15,7 @@ SPL Token and Token-2022 support for the AP3X Solana runtime: account decoders, 
 - **Wrapped SOL** — `NATIVE_MINT`, `syncNativeIx(account)` and `closeAccountIx(account, destination, owner)`.
 - **Holder queries** — `getTokenLargestAccounts(rpcPool, mint, commitment?)` and `getTokenAccountsByMint(rpcPool, mint, { commitment?, tokenProgramId? })`. They take an `RpcPoolLike`, meaning any object with a compatible `call`, such as `RpcPool`.
 - **Transfer decoders** — `decodeTransferInstruction(ix)` decodes `Transfer` and `TransferChecked` into `DecodedTransfer` (`{ source, dest, amount }`) or returns `null`. `parseTransferLog(chunk)` does the same from a log chunk; this module defines its own structural `ProgramLogChunk` type.
+- **Transfer details** — `decodeTransferInstructionDetails(ix)` additionally exposes the variant, checked mint/decimals, authority and optional multisig accounts. It also decodes Token-2022 `TransferCheckedWithFee` and retains its encoded `expectedFee` as a bigint. An authority is not an owner; an encoded fee expectation is not proof of successful execution or actual withholding. Ordinary Token-2022 instructions leave `expectedFee` null. Wire references: [Token-2022 instructions](https://docs.rs/spl-token-2022-interface/4.0.0/src/spl_token_2022_interface/instruction.rs.html) and [transfer-fee instructions](https://docs.rs/spl-token-2022-interface/4.0.0/src/spl_token_2022_interface/extension/transfer_fee/instruction.rs.html).
 
 ## Usage
 

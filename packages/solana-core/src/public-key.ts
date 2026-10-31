@@ -23,6 +23,7 @@ export class PublicKey {
    * by cloning on construction and returning copies from {@link toBuffer}.
    */
   readonly #bytes: Uint8Array;
+  #base58: string | undefined;
 
   /**
    * Private constructor — callers go through {@link fromBytes} or
@@ -76,7 +77,8 @@ export class PublicKey {
    * form used on Solana for program IDs, mints, and addresses.
    */
   toBase58(): string {
-    return base58Encode(this.#bytes);
+    // Immutable bytes, so the encoding is computed once per key.
+    return (this.#base58 ??= base58Encode(this.#bytes));
   }
 
   /** Alias for {@link toBase58} so PublicKeys render naturally in logs. */

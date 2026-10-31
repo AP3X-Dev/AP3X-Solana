@@ -51,6 +51,10 @@ With `--check`, the command exits 1 when any probe fails. Usage errors exit 2.
 
 `@grpc/grpc-js` and `@grpc/proto-loader` are allowed exceptions to the zero-ecosystem-deps rule. Yellowstone requires them, and they bring in no Solana SDK. The proto file is vendored under `src/proto/`. `ws` is the third exception: Node 20 has no built-in WebSocket client.
 
+## Licenses
+
+AP3X implementation code is MIT licensed. The vendored Yellowstone protocol definitions are Apache-2.0, as declared by the pinned upstream `yellowstone-grpc-proto` package. Their license text and provenance notice ship in `dist/proto/LICENSE_APACHE2` and `dist/proto/NOTICE.md`.
+
 ## Boundary
 
 `solana-connectivity` may import only from `core`.

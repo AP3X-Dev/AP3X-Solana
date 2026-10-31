@@ -49,6 +49,8 @@ export interface ReconcilerOpts {
   walletAddresses: PublicKey[];
   intervalMs?: number;
   onDrift?: (e: DriftEvent) => void;
+  /** Report failed background passes; direct runOnce() calls still reject. */
+  onError?: (error: unknown) => void;
   /**
    * Rebuild a drifted position from on-chain history (default true when the
    * store supports `rebuildPosition`).
@@ -66,6 +68,7 @@ export class Reconciler {
   readonly #walletAddresses: PublicKey[];
   readonly #intervalMs: number;
   readonly #onDrift: ((e: DriftEvent) => void) | undefined;
+  readonly #onError: (error: unknown) => void;
   readonly #rebuildOnDrift: boolean;
   #timer: ReturnType<typeof setInterval> | null = null;
 
@@ -75,13 +78,15 @@ export class Reconciler {
     this.#walletAddresses = opts.walletAddresses;
     this.#intervalMs = opts.intervalMs ?? 60_000;
     this.#onDrift = opts.onDrift;
+    this.#onError = opts.onError ?? ((error) => { console.error('Portfolio reconciliation failed:', error); });
     this.#rebuildOnDrift = opts.rebuildOnDrift ?? true;
   }
 
   /** Start the periodic reconciliation timer. */
   start(): void {
+    if (this.#timer !== null) return;
     this.#timer = setInterval(() => {
-      void this.runOnce();
+      void this.runOnce().catch(this.#onError);
     }, this.#intervalMs);
   }
 

@@ -550,10 +550,10 @@ export async function run(args: Args, io: Io, deps: RunDeps = {}): Promise<() =>
 // main() — the production entry point
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
+export async function main(argv = process.argv.slice(2), deps: RunDeps = {}): Promise<void> {
   let args: Args;
   try {
-    args = parseArgs(process.argv.slice(2));
+    args = parseArgs(argv);
   } catch (err) {
     process.stderr.write(`solana-watch: ${(err as Error).message}\n`);
     process.exit(2);
@@ -572,7 +572,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const close = await run(args, io);
+  const close = await run(args, io, deps);
 
   const shutdown = (): void => {
     void close().then(() => process.exit(0));

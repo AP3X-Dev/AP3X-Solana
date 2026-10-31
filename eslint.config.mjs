@@ -11,7 +11,7 @@
  *
  * Tooling notes:
  *   - Flat config (ESLint 9+). Each config object narrows by `files` glob.
- *   - `eslint-plugin-boundaries` v4 is compatible with flat config; we pass
+ *   - `eslint-plugin-boundaries` v7 is compatible with flat config; we pass
  *     element definitions via the `settings` key.
  *   - `typescript-eslint` provides a TS-aware parser; we do NOT enable
  *     type-checked rules, only the parser, because the boundary + restricted-import
@@ -23,6 +23,7 @@
 
 import boundaries from 'eslint-plugin-boundaries';
 import tseslint from 'typescript-eslint';
+import { layerPolicies, workspaceLayerPlugin } from './scripts/workspace-layers.mjs';
 
 /** @type {import('eslint').Linter.Config[]} */
 export default [
@@ -52,6 +53,7 @@ export default [
     },
     plugins: {
       boundaries,
+      workspace: workspaceLayerPlugin,
       // Register the @typescript-eslint plugin namespace. The existing code
       // uses inline `// eslint-disable-next-line @typescript-eslint/<rule>`
       // directives, so the rule names need to resolve even though we don't
@@ -81,7 +83,7 @@ export default [
       // We key the boundary check off the workspace package name so that
       // `import x from '@ap3x/solana-core'` resolves to the `core` element
       // regardless of how the TS path resolver rewrites it on disk.
-      'boundaries/dependency-nodes': ['import'],
+      'boundaries/dependency-nodes': ['import', 'export', 'require', 'dynamic-import'],
       'boundaries/include': ['packages/**/src/**', 'examples/**/src/**'],
     },
     rules: {
@@ -94,47 +96,14 @@ export default [
       //   events       → core
       //   vault        → core
       //   example      → every substrate package
-      'boundaries/element-types': [
-        'error',
-        {
-          default: 'disallow',
-          rules: [
-            { from: 'core', allow: [] },
-            { from: 'connectivity', allow: ['core'] },
-            { from: 'tx', allow: ['core', 'connectivity'] },
-            { from: 'spl', allow: ['core', 'tx'] },
-            { from: 'metaplex', allow: ['core', 'tx'] },
-            { from: 'events', allow: ['core'] },
-            { from: 'vault', allow: ['core'] },
-            { from: 'signals', allow: ['core', 'connectivity', 'events'] },
-            { from: 'portfolio', allow: ['core', 'connectivity', 'events', 'spl'] },
-            { from: 'executor', allow: ['core', 'connectivity', 'tx', 'vault'] },
-            { from: 'strategy', allow: ['core', 'signals', 'executor', 'portfolio', 'vault'] },
-            { from: 'trading', allow: ['executor'] },
-            { from: 'pumpfun-events', allow: ['core', 'events', 'tx'] },
-            { from: 'pumpfun-protocol', allow: ['core', 'connectivity', 'events', 'spl', 'metaplex', 'tx', 'pumpfun-events'] },
-            {
-              from: 'example',
-              allow: [
-                'core',
-                'connectivity',
-                'tx',
-                'spl',
-                'metaplex',
-                'events',
-                'vault',
-                'signals',
-                'strategy',
-                'trading',
-                'executor',
-                'portfolio',
-                'pumpfun-events',
-                'pumpfun-protocol',
-              ],
-            },
-          ],
-        },
-      ],
+      'boundaries/dependencies': ['error', {
+        default: 'disallow',
+        policies: layerPolicies.map(policy => ({
+          from: { element: { type: policy.from } },
+          allow: policy.allow.map(type => ({ to: { element: { type } } })),
+        })),
+      }],
+      'workspace/dependencies': 'error',
       // Resolve the @typescript-eslint/* rule namespace used by existing
       // inline disable directives. Kept as `warn` rather than `error` so the
       // directives continue to suppress the existing callsites without
@@ -174,17 +143,7 @@ export default [
           paths: [
             {
               name: '@ap3x/solana-tx',
-              importNames: [
-                'TransactionAssembler',
-                'assemble',
-                'JitoBundleBuilder',
-                'PriorityFeeEstimator',
-                'simulateAndBudget',
-                'computeBudget',
-                'AddressLookupTable',
-                'decodeAddressLookupTable',
-                'tipInstruction',
-              ],
+              allowImportNames: ['findProgramAddress'],
               message:
                 'Only `findProgramAddress` may be imported from @ap3x/solana-tx in solana-spl / solana-metaplex. Other tx helpers belong to the send-path layer.',
             },
@@ -194,6 +153,7 @@ export default [
                 'solana-spl and solana-metaplex must not import @ap3x/solana-connectivity directly; thread RpcPool through as a parameter or type instead.',
             },
           ],
+          patterns: [{ group: ['@ap3x/solana-tx/*'], message: 'Use the permitted named helper from the public package entrypoint.' }],
         },
       ],
     },
@@ -212,14 +172,12 @@ export default [
           paths: [
             {
               name: '@ap3x/solana-spl',
-              importNames: [
-                'TokenMint', 'TokenAccount', 'decodeMint', 'decodeTokenAccount',
-                'createAssociatedTokenAccountIx', 'getTokenLargestAccounts', 'getTokenAccountsByMint',
-              ],
+              allowImportNames: ['decodeTransferInstruction', 'parseTransferLog', 'SPL_TOKEN_PROGRAM_ID', 'SPL_TOKEN_2022_PROGRAM_ID', 'getAssociatedTokenAddress'],
               message:
                 'solana-portfolio may import only the SPL transfer decoders + getAssociatedTokenAddress from @ap3x/solana-spl. Other SPL exports belong to the decoder/builder layer.',
             },
           ],
+          patterns: [{ group: ['@ap3x/solana-spl/*'], message: 'Use permitted transfer/ATA helpers from the public package entrypoint.' }],
         },
       ],
     },
@@ -244,7 +202,8 @@ export default [
       '@typescript-eslint': tseslint.plugin,
     },
     rules: {
-      'boundaries/element-types': 'off',
+      'boundaries/dependencies': 'off',
+      'workspace/dependencies': 'off',
       'no-restricted-imports': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': [

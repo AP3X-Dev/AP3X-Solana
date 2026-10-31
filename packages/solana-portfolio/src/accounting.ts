@@ -10,14 +10,25 @@ export interface ReduceResult {
   basisUnresolved: boolean;
 }
 
+function requireNonnegative(value: bigint, name: string): void {
+  if (typeof value !== 'bigint' || value < 0n) throw new Error(`${name} must be a nonnegative bigint`);
+}
+
+function validateLots(lots: Lot[]): void {
+  for (const lot of lots) {
+    requireNonnegative(lot.amount, 'lot amount');
+    if (lot.amount === 0n) throw new Error('lot amount must be positive');
+    requireNonnegative(lot.costBasisLamports, 'lot cost basis');
+  }
+}
+
 /**
  * Reduce lots by a given sale amount using the specified accounting method.
  *
  * `proceedsLamports` is the total lamport proceeds received for selling `amount` tokens.
- * For FIFO/LIFO, per-lot proceeds are allocated as:
- *   lotProceeds = proceedsLamports * tokensTaken / max(lot.amount, amount)
- * This correctly handles both partial-lot (lot > sale) and multi-lot (sale > lot) cases.
- * For avg-cost, realized = proceedsLamports - weightedAverageCostBasis.
+ * All sale proceeds are recognized exactly once. FIFO/LIFO consume each lot's
+ * basis proportionally. Average cost pools the basis and allocates integer
+ * remainders deterministically, conserving both token units and lamports.
  *
  * Throws if `amount` exceeds total available tokens across all lots.
  * Input arrays are never mutated.
@@ -28,7 +39,12 @@ export function reduceLots(
   proceedsLamports: bigint,
   method: AccountingMethod,
 ): ReduceResult {
-  if (amount <= 0n) {
+  requireNonnegative(amount, 'sale amount');
+  requireNonnegative(proceedsLamports, 'sale proceeds');
+  validateLots(lots);
+  if (method !== 'fifo' && method !== 'lifo' && method !== 'avg-cost') throw new Error('unknown accounting method');
+  if (amount === 0n) {
+    if (proceedsLamports !== 0n) throw new Error('zero sale amount cannot have proceeds');
     return {
       remaining: lots,
       realized: 0n,
@@ -43,16 +59,6 @@ export function reduceLots(
     const totalAmt = lots.reduce((s, l) => s + l.amount, 0n);
     const totalBasis = lots.reduce((s, l) => s + l.costBasisLamports, 0n);
 
-    if (totalAmt === 0n) {
-      return {
-        remaining: lots,
-        realized: 0n,
-        costBasis: 0n,
-        proceeds: proceedsLamports,
-        basisUnresolved: false,
-      };
-    }
-
     if (amount > totalAmt) {
       throw new Error(`insufficient amount: tried to reduce ${amount}, only ${totalAmt} available`);
     }
@@ -61,16 +67,33 @@ export function reduceLots(
     const avgBasis = (totalBasis * amount) / totalAmt;
     const basisUnresolved = lots.some((l) => l.basisUnresolved === true);
 
-    // Reduce proportionally across all lots.
+    // Differences of cumulative floors allocate the entire sale, including
+    // rounding units that independent per-lot divisions would leave behind.
+    let cumulativeAmount = 0n;
+    let allocatedTokens = 0n;
+    let remainingTokens = 0n;
+    let allocatedBasis = 0n;
+    const remainingAmount = totalAmt - amount;
+    const remainingBasis = totalBasis - avgBasis;
     const remaining = lots
       .map((l) => {
-        const take = (l.amount * amount) / totalAmt;
-        if (take === 0n) return l;
-        const basisTaken = (l.costBasisLamports * take) / l.amount;
+        cumulativeAmount += l.amount;
+        const tokensThroughHere = (cumulativeAmount * amount) / totalAmt;
+        const take = tokensThroughHere - allocatedTokens;
+        allocatedTokens = tokensThroughHere;
+        const retained = l.amount - take;
+        remainingTokens += retained;
+        const basisThroughHere = remainingAmount === 0n
+          ? 0n : (remainingBasis * remainingTokens) / remainingAmount;
+        const retainedBasis = basisThroughHere - allocatedBasis;
+        allocatedBasis = basisThroughHere;
         return {
           ...l,
-          amount: l.amount - take,
-          costBasisLamports: l.costBasisLamports - basisTaken,
+          amount: retained,
+          costBasisLamports: retainedBasis,
+          // Pooled basis remains provisional even if the original unresolved
+          // lot was consumed completely by the integer allocation.
+          ...(basisUnresolved ? { basisUnresolved: true } : {}),
         };
       })
       .filter((l) => l.amount > 0n);
@@ -90,7 +113,6 @@ export function reduceLots(
 
   let toTake = amount;
   let costBasis = 0n;
-  let allocatedProceeds = 0n;
   let basisUnresolved = false;
   const out: Lot[] = [];
 
@@ -103,17 +125,7 @@ export function reduceLots(
     const tokensTaken = l.amount <= toTake ? l.amount : toTake;
     const partialBasis = (l.costBasisLamports * tokensTaken) / l.amount;
 
-    // Per-lot proceeds allocation:
-    //   denominator = max(lot.amount, total sale amount)
-    // When the lot is larger than the sale, we take a fraction of the lot so
-    // proceeds are scaled to that fraction. When the sale spans multiple lots
-    // (sale > any individual lot), proceeds are allocated proportionally to the
-    // total sale amount — matching standard proportional-allocation behaviour.
-    const denom = l.amount > amount ? l.amount : amount;
-    const lotProceeds = (proceedsLamports * tokensTaken) / denom;
-
     costBasis += partialBasis;
-    allocatedProceeds += lotProceeds;
 
     if (l.basisUnresolved === true) basisUnresolved = true;
 
@@ -140,7 +152,7 @@ export function reduceLots(
 
   return {
     remaining,
-    realized: allocatedProceeds - costBasis,
+    realized: proceedsLamports - costBasis,
     costBasis,
     proceeds: proceedsLamports,
     basisUnresolved,
@@ -161,6 +173,8 @@ export const PRICE_SCALE = 1_000_000_000n;
  * provisional when any lot has `basisUnresolved`.
  */
 export function unrealizedPnl(lots: Lot[], currentPriceLamports: bigint): bigint {
+  validateLots(lots);
+  requireNonnegative(currentPriceLamports, 'current price');
   const amount = lots.reduce((s, l) => s + l.amount, 0n);
   const basis = lots.reduce((s, l) => s + l.costBasisLamports, 0n);
   return (amount * currentPriceLamports) / PRICE_SCALE - basis;

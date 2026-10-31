@@ -37,10 +37,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ap3x/solana-connectivity": "workspace:*",
     "@ap3x/solana-core": "workspace:*",
     "@ap3x/solana-events": "workspace:*",
-    "@ap3x/solana-signals": "workspace:*",
-    "@ap3x/solana-connectivity": "workspace:*"
+    "@ap3x/solana-signals": "workspace:*"
   },
   "peerDependencies": {
     "better-sqlite3": ">=9.0.0",
@@ -59,6 +59,6 @@
     "pg": "^8.11.0",
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "vitest": "^4.1.12"
   }
 }

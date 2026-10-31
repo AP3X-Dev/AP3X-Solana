@@ -59,6 +59,12 @@ const INT_SIZES: Record<string, [number, boolean]> = {
   u128: [16, false], i128: [16, true],
 };
 
+function binaryTag(c: Cursor): number {
+  const tag = c.take(1)[0]!;
+  if (tag !== 0 && tag !== 1) throw new Error(`invalid Borsh bool/option tag ${tag}`);
+  return tag;
+}
+
 function decodeValue(c: Cursor, type: IdlType, types: Record<string, IdlTypeDef>): unknown {
   if (typeof type === 'string') {
     const int = INT_SIZES[type];
@@ -70,11 +76,11 @@ function decodeValue(c: Cursor, type: IdlType, types: Record<string, IdlTypeDef>
     }
     switch (type) {
       case 'bool':
-        return c.take(1)[0] !== 0;
+        return binaryTag(c) === 1;
       case 'pubkey':
         return PublicKey.fromBytes(c.take(32));
       case 'string':
-        return new TextDecoder().decode(c.take(Number(uintLE(c.take(4)))));
+        return new TextDecoder('utf-8', { fatal: true }).decode(c.take(Number(uintLE(c.take(4)))));
       case 'bytes':
         return c.take(Number(uintLE(c.take(4)))).slice();
       default:
@@ -86,7 +92,7 @@ function decodeValue(c: Cursor, type: IdlType, types: Record<string, IdlTypeDef>
     return Array.from({ length: n }, () => decodeValue(c, type.vec, types));
   }
   if ('option' in type) {
-    return c.take(1)[0] === 0 ? null : decodeValue(c, type.option, types);
+    return binaryTag(c) === 0 ? null : decodeValue(c, type.option, types);
   }
   if ('array' in type) {
     const [inner, n] = type.array;

@@ -23,6 +23,32 @@ const mkSignal = (id: string): Signal => ({
 });
 
 describe('SignalQueue', () => {
+  it('isolates a failing subscriber and retains backlog while all subscribers are detached', async () => {
+    const q = new SignalQueue({ dedupWindow: 1 });
+    const errors = vi.fn();
+    const seen: string[] = [];
+    const failure = new Error('subscriber failed');
+    q.on('handler-error', errors);
+    q.subscribe('broken', () => { throw failure; });
+    q.subscribe('healthy', (s) => { seen.push(s.signalId); });
+    await q.push(mkSignal('a'));
+    await q.drain();
+    expect(errors).toHaveBeenCalledWith({ subscriber: 'broken', error: failure });
+    expect(seen).toEqual(['a']);
+    q.unsubscribe('broken');
+    q.unsubscribe('healthy');
+    await q.push(mkSignal('b'));
+    await q.drain();
+    expect(seen).toEqual(['a']);
+    q.subscribe('healthy', (s) => { seen.push(s.signalId); });
+    await q.drain();
+    // The dedup entry for a was evicted by b, so replaying a is allowed.
+    await q.push(mkSignal('a'));
+    await q.drain();
+    expect(seen).toEqual(['a', 'b', 'a']);
+    expect(errors).toHaveBeenCalledOnce();
+  });
+
   it('delivers signals to a subscriber in push order', async () => {
     const q = new SignalQueue({ capacity: 100 });
     const seen: string[] = [];

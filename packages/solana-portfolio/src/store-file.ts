@@ -146,6 +146,8 @@ export class FilePortfolioStore extends EventEmitter implements PortfolioReadApi
     lotIndex: number,
     costBasisLamports: bigint,
   ): Promise<{ oldBasis: bigint }> {
+    if (!Number.isSafeInteger(lotIndex) || lotIndex < 0) throw new Error('lot index must be a nonnegative safe integer');
+    if (typeof costBasisLamports !== 'bigint' || costBasisLamports < 0n) throw new Error('cost basis must be a nonnegative bigint');
     return this.withMutex(wallet.toBase58(), async () => {
       const data = await this.loadWalletData(wallet);
       const pos = data?.positions.find((p) => p.mint.equals(mint));

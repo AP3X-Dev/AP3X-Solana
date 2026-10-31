@@ -58,6 +58,22 @@ describe('WatcherStrategy — name', () => {
 });
 
 describe('WatcherStrategy — onSignal', () => {
+  it('writes watched transfers to stdout by default without proposing trades', async () => {
+    const stdout = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const strategy = new WatcherStrategy(new Set([WATCHED]));
+      const amount = 9007199254740993n;
+      expect(await strategy.onSignal(makeSignal({ decoded: { dest: watchedPk, amount } }), ctx)).toBeNull();
+      expect(await strategy.onSignal(makeSignal({ decoded: { dest: otherPk, amount } }), ctx)).toBeNull();
+      expect(stdout).toHaveBeenCalledOnce();
+      expect(JSON.parse(stdout.mock.calls[0]![0] as string)).toEqual({
+        wallet: WATCHED, sig: 'abc123', slot: 42, amount: '9007199254740993',
+      });
+    } finally {
+      stdout.mockRestore();
+    }
+  });
+
   it('emits JSON when dest is in watched set', async () => {
     const emit = vi.fn();
     const strategy = new WatcherStrategy(new Set([WATCHED]), emit);

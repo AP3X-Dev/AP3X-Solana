@@ -18,12 +18,6 @@ import { fileURLToPath } from 'node:url';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 
-// ESM splitting can move this module into a chunk at dist/, while the CJS
-// standalone entry remains under dist/proto/. Never resolve assets from cwd.
-const moduleDir = import.meta.url ? path.dirname(fileURLToPath(import.meta.url)) : __dirname;
-const protoDir = existsSync(path.join(moduleDir, 'searcher.proto'))
-  ? moduleDir : path.join(moduleDir, 'proto');
-
 /** Upstream commit of jito-labs/mev-protos that was vendored. */
 export const PINNED_COMMIT = '46ead86a13a55a0ef2c139db96a8ee93bf7505e3';
 
@@ -40,6 +34,15 @@ export function loadSearcherProto(): {
   SearcherService: grpc.ServiceClientConstructor;
   packageDefinition: protoLoader.PackageDefinition;
 } {
+  // Bundling can move this module into dist/index or a shared dist/chunk.
+  // The standalone helper remains in dist/proto; source tests run in src/proto.
+  // Use the CommonJS globals before touching import.meta.url in CJS output.
+  const here = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
+  const protoDir = [here, path.resolve(here, 'proto'), path.resolve(here, '..', 'proto')]
+    .find(dir => ['searcher.proto', 'bundle.proto', 'packet.proto', 'shared.proto']
+      .every(file => existsSync(path.resolve(dir, file))));
+  if (!protoDir) throw new Error(`Jito proto assets missing beside ${here}`);
+
   const packageDefinition = protoLoader.loadSync(
     [
       path.resolve(protoDir, 'searcher.proto'),

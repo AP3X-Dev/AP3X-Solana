@@ -2,6 +2,20 @@ import { describe, it, expect, vi } from 'vitest';
 import { BundleAccumulator } from './bundle-accumulator.js';
 
 describe('BundleAccumulator', () => {
+  it('flushes a one-entry bundle immediately without leaving a timer', async () => {
+    const onFlush = vi.fn(async () => ['ack']);
+    const acc = new BundleAccumulator({ windowMs: 1000, maxPerBundle: 1, onFlush });
+    await expect(acc.add('single', { signedTx: Uint8Array.of(7) })).resolves.toBe('ack');
+    expect(onFlush).toHaveBeenCalledTimes(1);
+  });
+
+  it('propagates a failed flush to every waiting entry in that group', async () => {
+    const acc = new BundleAccumulator({ windowMs: 1000, maxPerBundle: 2,
+      onFlush: async () => { throw new Error('network unavailable'); } });
+    const first = expect(acc.add('group', { signedTx: Uint8Array.of(1) })).rejects.toThrow('network unavailable');
+    const second = expect(acc.add('group', { signedTx: Uint8Array.of(2) })).rejects.toThrow('network unavailable');
+    await Promise.all([first, second]);
+  });
   it('flushes when bundle reaches 5 intents', async () => {
     const flushed: number[] = [];
     const acc = new BundleAccumulator({ windowMs: 1000, maxPerBundle: 5, onFlush: (b) => { flushed.push(b.length); return Promise.all(b.map((p) => Promise.resolve('uuid'))); } });

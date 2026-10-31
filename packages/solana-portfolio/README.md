@@ -26,6 +26,12 @@ marked `basisUnresolved`.
 
 `Reconciler` compares stored positions with on-chain balances on an interval,
 emits drift events, and rebuilds drifted positions via `rebuildPosition`.
+Both token programs must return explicit account arrays with valid mint keys
+and exact raw u64 amount strings. Unavailable or malformed results reject the
+pass before drift or reconstruction; an explicit empty array establishes no
+accounts for that program. Background failures call `onError` (stderr by
+default); direct `runOnce()` calls reject. Repeated `start()` calls share one
+timer, and `stop()` prevents future scheduled passes.
 
 ## PnL
 
@@ -33,6 +39,12 @@ emits drift events, and rebuilds drifted positions via `rebuildPosition`.
 - `getUnrealizedPnl(wallet, mint, currentPriceLamports)` — open lots marked to
   `currentPriceLamports`, which is lamports per token base unit × `PRICE_SCALE`
   (1e9, the same convention as the pump.fun price helpers).
+
+FIFO/LIFO recognize the full supplied sale proceeds and consume basis from
+the selected lots. Average cost pools the basis, rounds the sold basis down
+to lamports, and uses cumulative integer allocation across lots so remaining
+token units and basis are conserved. Remaining pooled basis stays provisional
+when any input lot has unresolved basis.
 
 ## Boundary
 

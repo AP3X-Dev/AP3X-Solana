@@ -26,6 +26,27 @@ describe('base58', () => {
     }
   });
 
+  it('matches the BigInt reference on random values with leading zeros', () => {
+    const A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    const reference = (bytes: Uint8Array): string => {
+      let zeros = 0;
+      while (zeros < bytes.length && bytes[zeros] === 0) zeros++;
+      let n = 0n;
+      for (const b of bytes) n = (n << 8n) | BigInt(b);
+      let out = '';
+      while (n > 0n) { out = A[Number(n % 58n)]! + out; n /= 58n; }
+      return '1'.repeat(zeros) + out;
+    };
+    for (let i = 0; i < 2000; i++) {
+      const buf = crypto.getRandomValues(new Uint8Array(i % 97));
+      buf.fill(0, 0, i % 5);
+      if (i % 11 === 0) buf.fill(255);
+      const enc = encode(buf);
+      expect(enc).toBe(reference(buf));
+      expect(Array.from(decode(enc))).toEqual(Array.from(buf));
+    }
+  });
+
   it('throws on invalid chars', () => {
     expect(() => decode('0')).toThrow(/base58/i);
     expect(() => decode('O')).toThrow(/base58/i);

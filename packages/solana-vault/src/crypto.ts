@@ -2,7 +2,7 @@
 // `libsodium-wrappers` build does NOT expose `crypto_pwhash` or its
 // `ALG_ARGON2ID13` / OPSLIMIT / MEMLIMIT / SALTBYTES constants — those live
 // only in the "sumo" build. This is a hard requirement, not a preference.
-import sodium from 'libsodium-wrappers-sumo';
+import sodium from './sodium';
 
 /**
  * Await libsodium's initialization promise. Every primitive in this module

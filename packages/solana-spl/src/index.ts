@@ -59,10 +59,12 @@ export {
   SPL_TOKEN_PROGRAM_ID,
   SPL_TOKEN_2022_PROGRAM_ID,
   decodeTransferInstruction,
+  decodeTransferInstructionDetails,
 } from './decoders/transfer-instruction.js';
 export type {
   InstructionShape,
   DecodedTransfer,
+  DecodedTransferDetails,
 } from './decoders/transfer-instruction.js';
 export { parseTransferLog } from './decoders/transfer-log.js';
 export type { ProgramLogChunk } from './decoders/transfer-log.js';
