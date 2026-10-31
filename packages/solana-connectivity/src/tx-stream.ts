@@ -29,7 +29,7 @@ export type StreamCommitment = 'processed' | 'confirmed' | 'finalized';
 export interface StreamedTransaction {
   signature: string;
   slot: number;
-  /** Transaction error, `null` when it succeeded. */
+  /** Transaction error: null means success; undefined means execution status was not supplied. */
   err: unknown;
   logs: string[];
   /** Local receive time, epoch ms. */
@@ -121,15 +121,16 @@ export function subscribeHeliusTransactions(
     const meta = r.transaction?.meta;
     const wire = r.transaction?.transaction;
     const b64 = Array.isArray(wire) ? wire[0] : wire;
-    const full: FullTransaction | undefined = b64 && meta
+    const fee = meta?.fee;
+    const full: FullTransaction | undefined = b64 && meta && typeof fee === 'number' && Number.isSafeInteger(fee) && fee >= 0
       ? {
           bytes: Uint8Array.from(Buffer.from(b64, 'base64')),
-          fee: meta.fee ?? 0,
+          fee,
           loadedAddresses: { writable: meta.loadedAddresses?.writable ?? [], readonly: meta.loadedAddresses?.readonly ?? [] },
           innerInstructions: meta.innerInstructions ?? [],
         }
       : undefined;
-    return { signature: r.signature, slot: r.slot, err: meta?.err ?? null, logs: meta?.logMessages ?? [], ...(full ? { full } : {}) };
+    return { signature: r.signature, slot: r.slot, err: meta?.err, logs: meta?.logMessages ?? [], ...(full ? { full } : {}) };
   });
 }
 
@@ -143,8 +144,11 @@ export function subscribeProgramLogs(opts: ProgramLogsStreamOptions, handlers: T
   return openStream(opts, requests, handlers, (method, result) => {
     if (method !== 'logsNotification') return null;
     const r = result as { context: { slot: number }; value: { signature: string; err: unknown; logs: string[] | null } };
-    if (!seen.add(r.value.signature)) return null;
-    return { signature: r.value.signature, slot: r.context.slot, err: r.value.err ?? null, logs: r.value.logs ?? [] };
+    // A partial notification must not consume the identity of a later proven
+    // outcome. Keep duplicate suppression bounded across execution states.
+    const execution = r.value.err === undefined ? 'unknown' : r.value.err === null ? 'succeeded' : 'failed';
+    if (!seen.add(JSON.stringify([r.value.signature, execution]))) return null;
+    return { signature: r.value.signature, slot: r.context.slot, err: r.value.err, logs: r.value.logs ?? [] };
   });
 }
 
