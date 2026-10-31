@@ -79,6 +79,9 @@ function buildTxPayload(opts: {
   if (!includeWalletInAccountKeys) {
     accountKeys[1] = 'NOBODY11111111111111111111111111111111111111';
   }
+  const tokenAccounts = Math.max(preTokenBalances.length, postTokenBalances.length);
+  accountKeys.push(...Array.from({ length: tokenAccounts }, (_, i) => `token-account-${i}`));
+  const native = (balances: number[]) => [...balances, ...Array.from({ length: Math.max(0, accountKeys.length - balances.length) }, () => 0)];
 
   const toTokenBalance = (entries: Array<{ mint: string; owner: string; amount: string }>) =>
     entries.map((e, i) => ({
@@ -98,8 +101,8 @@ function buildTxPayload(opts: {
     version: 0,
     meta: {
       fee,
-      preBalances,
-      postBalances,
+      preBalances: native(preBalances),
+      postBalances: native(postBalances),
       preTokenBalances: toTokenBalance(preTokenBalances),
       postTokenBalances: toTokenBalance(postTokenBalances),
       err: null,
@@ -107,9 +110,7 @@ function buildTxPayload(opts: {
     transaction: {
       message: {
         // slot 0 = filler, slot 1 = wallet (unless overridden)
-        accountKeys: includeWalletInAccountKeys
-          ? ['FILLER111111111111111111111111111111111111111', WALLET_STR]
-          : ['FILLER111111111111111111111111111111111111111', 'NOBODY11111111111111111111111111111111111111'],
+        accountKeys,
         instructions: [],
         recentBlockhash: 'BLOCKHASH',
       },
@@ -123,6 +124,60 @@ function buildTxPayload(opts: {
 // ---------------------------------------------------------------------------
 
 describe('adaptToLandedTrades', () => {
+  const receiptWithBuy = () => buildTxPayload({ preBalances: [100, 10000], postBalances: [100, 4000], fee: 5000,
+    preTokenBalances: [{ mint: MINT_A_STR, owner: WALLET_STR, amount: '0' }],
+    postTokenBalances: [{ mint: MINT_A_STR, owner: WALLET_STR, amount: '100' }],
+  }) as { slot: number; meta: Record<string, unknown>; transaction: { signatures: string[]; message: { accountKeys: string[] } } };
+
+  it('refuses unproven execution and missing or inexact fee/native quantities instead of inventing zero', async () => {
+    for (const err of [undefined, { InstructionError: [0, 'Custom'] }]) {
+      const p = receiptWithBuy(); p.meta.err = err;
+      await expect(adaptToLandedTrades(landedResult(), { rpcPool: new FakeRpcPool(p), walletAddress: WALLET })).rejects.toThrow(/execution/i);
+    }
+    for (const fee of [undefined, null, -1, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+      const p = receiptWithBuy(); p.meta.fee = fee;
+      await expect(adaptToLandedTrades(landedResult(), { rpcPool: new FakeRpcPool(p), walletAddress: WALLET })).rejects.toThrow(/fee|unsigned/i);
+    }
+    for (const value of [undefined, -1, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+      const p = receiptWithBuy(); p.meta.preBalances = [100, value];
+      await expect(adaptToLandedTrades(landedResult(), { rpcPool: new FakeRpcPool(p), walletAddress: WALLET })).rejects.toThrow(/balance|unsigned/i);
+    }
+  });
+
+  it('binds the fetched receipt to the landed signature and slot', async () => {
+    for (const field of ['signature', 'slot']) {
+      const p = receiptWithBuy();
+      if (field === 'signature') p.transaction.signatures = ['wrong']; else p.slot++;
+      await expect(adaptToLandedTrades(landedResult(), { rpcPool: new FakeRpcPool(p), walletAddress: WALLET })).rejects.toThrow(/identity|slot|signature/i);
+    }
+  });
+
+  it('sums every owned token account for the same mint once, independent of row ordering', async () => {
+    const p = buildTxPayload({ preBalances: [100, 10000], postBalances: [100, 4000], fee: 5000,
+      preTokenBalances: [{ mint: MINT_A_STR, owner: WALLET_STR, amount: '100' }, { mint: MINT_A_STR, owner: WALLET_STR, amount: '200' }],
+      postTokenBalances: [{ mint: MINT_A_STR, owner: WALLET_STR, amount: '230' }, { mint: MINT_A_STR, owner: WALLET_STR, amount: '140' }],
+    });
+    const out = await adaptToLandedTrades(landedResult(), { rpcPool: new FakeRpcPool(p), walletAddress: WALLET });
+    expect(out).toHaveLength(1);
+    expect(out[0]!.amountDelta).toBe(70n);
+  });
+
+  it('finds native wallet balances in loaded address-table accounts', async () => {
+    const p = receiptWithBuy();
+    p.transaction.message.accountKeys = ['static-key'];
+    p.meta.loadedAddresses = { writable: [WALLET_STR], readonly: ['token-account'] };
+    const out = await adaptToLandedTrades(landedResult(), { rpcPool: new FakeRpcPool(p), walletAddress: WALLET });
+    expect(out[0]!.solFlowLamports).toBe(-6000n);
+    expect(out[0]!.amountDelta).toBe(100n);
+  });
+
+  it('refuses omitted token recording and malformed raw quantities', async () => {
+    for (const postTokenBalances of [undefined, [{ accountIndex: 2, owner: WALLET_STR, mint: MINT_A_STR, uiTokenAmount: {} }],
+      [{ accountIndex: 2, owner: WALLET_STR, mint: MINT_A_STR, uiTokenAmount: { amount: '-1' } }]]) {
+      const p = receiptWithBuy(); p.meta.postTokenBalances = postTokenBalances;
+      await expect(adaptToLandedTrades(landedResult(), { rpcPool: new FakeRpcPool(p), walletAddress: WALLET })).rejects.toThrow(/token|unsigned/i);
+    }
+  });
 
   // -------------------------------------------------------------------------
   // Test 1 — mixed token deltas (buy one mint, sell another, new mint, closed)

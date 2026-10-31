@@ -316,7 +316,8 @@ export class StrategyRuntime extends EventEmitter {
       // hook calls so two signals for the same instance can never interleave,
       // preventing concurrent intentId collisions or out-of-order portfolio
       // mutations.
-      void rec.queue.enqueue(async () => {
+      void rec.queue.enqueue(() => this.callHook(rec, 'execution', async () => {
+        if (rec.quarantined) return;
         const decision = await this.callHook(rec, 'onSignal', () =>
           rec.strategy.onSignal(sig, rec.ctx),
         );
@@ -369,7 +370,7 @@ export class StrategyRuntime extends EventEmitter {
           const positionsTrip = rec.guards.checkOpenPositions(open);
           if (positionsTrip) void this.tripGuard(rec, positionsTrip);
         }
-      });
+      }));
     }
   }
 
@@ -432,7 +433,7 @@ export class StrategyRuntime extends EventEmitter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Wraps a hook call in try/catch.
+   * Wraps a hook or execution-pipeline call in try/catch.
    *
    * On error:
    *   1. Calls `strategy.onError` synchronously (swallows any error it throws).

@@ -35,19 +35,20 @@ describe('CostBasisReconstructor', () => {
     const tx = {
       slot: 100,
       meta: {
-        preBalances: [15_000n],
-        postBalances: [9_000n],
+        err: null,
+        preBalances: [15_000n, 0n],
+        postBalances: [9_000n, 0n],
         fee: 5000,
         preTokenBalances: [
-          { owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '0' } },
+          { accountIndex: 1, owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '0' } },
         ],
         postTokenBalances: [
-          { owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '100' } },
+          { accountIndex: 1, owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '100' } },
         ],
         logMessages: [],
       },
       transaction: {
-        message: { accountKeys: [wallet.toBase58()], instructions: [] },
+        message: { accountKeys: [wallet.toBase58(), mint.toBase58()], instructions: [] },
         signatures: ['s1'],
       },
     };
@@ -70,19 +71,20 @@ describe('CostBasisReconstructor', () => {
     const tx = {
       slot: 100,
       meta: {
-        preBalances: [10_000n],
-        postBalances: [10_000n - 5000n],
+        err: null,
+        preBalances: [10_000n, 0n],
+        postBalances: [10_000n - 5000n, 0n],
         fee: 5000,
         preTokenBalances: [
-          { owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '0' } },
+          { accountIndex: 1, owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '0' } },
         ],
         postTokenBalances: [
-          { owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '100' } },
+          { accountIndex: 1, owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '100' } },
         ],
         logMessages: [],
       },
       transaction: {
-        message: { accountKeys: [wallet.toBase58()], instructions: [] },
+        message: { accountKeys: [wallet.toBase58(), mint.toBase58()], instructions: [] },
         signatures: ['s1'],
       },
     };

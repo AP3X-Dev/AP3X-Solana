@@ -8,7 +8,7 @@
 // Only `landed` results produce trades; all other variants return [].
 // ---------------------------------------------------------------------------
 
-import { PublicKey } from '@ap3x/solana-core';
+import { PublicKey, rpcU64 } from '@ap3x/solana-core';
 import type { ExecutionResult } from '@ap3x/solana-executor';
 import type { LandedTrade } from '@ap3x/solana-portfolio';
 
@@ -49,6 +49,7 @@ interface TransactionMeta {
   postTokenBalances: TokenBalance[];
   err: unknown;
   logMessages?: string[];
+  loadedAddresses?: { writable?: string[]; readonly?: string[] };
 }
 
 interface TransactionMessage {
@@ -76,9 +77,9 @@ interface SolanaTransactionResponse {
 function isSolanaTransactionResponse(v: unknown): v is SolanaTransactionResponse {
   if (v === null || typeof v !== 'object') return false;
   const obj = v as Record<string, unknown>;
-  if (!('transaction' in obj) || typeof obj['transaction'] !== 'object') return false;
+  if (!obj['transaction'] || typeof obj['transaction'] !== 'object') return false;
   const tx = obj['transaction'] as Record<string, unknown>;
-  if (!('message' in tx) || typeof tx['message'] !== 'object') return false;
+  if (!tx['message'] || typeof tx['message'] !== 'object') return false;
   return true;
 }
 
@@ -120,22 +121,35 @@ export async function adaptToLandedTrades(
     { maxSupportedTransactionVersion: 1, encoding: 'json' },
   ]);
 
-  if (!isSolanaTransactionResponse(raw) || raw.meta === null) return [];
+  if (!isSolanaTransactionResponse(raw) || !raw.meta) return [];
 
   // Destructure meta after the null guard so TypeScript knows it is non-null.
   const { meta, transaction } = raw;
+  if (meta.err !== null) throw new Error('Landed receipt execution is failed or unproven');
+  if (!Number.isSafeInteger(raw.slot) || raw.slot < 0 || transaction.signatures?.[0] !== result.signature || raw.slot !== result.slot)
+    throw new Error('Landed receipt signature/slot identity mismatch');
   const walletStr = opts.walletAddress.toBase58();
 
   // -------------------------------------------------------------------------
   // SOL delta for our wallet
   // -------------------------------------------------------------------------
 
-  const accountIdx = transaction.message.accountKeys.indexOf(walletStr);
-  const fee = BigInt(meta.fee ?? 0);
+  const keyGroups = [transaction.message.accountKeys, meta.loadedAddresses?.writable ?? [], meta.loadedAddresses?.readonly ?? []];
+  if (keyGroups.some(group => !Array.isArray(group) || group.some(k => typeof k !== 'string' || !k)))
+    throw new Error('Invalid receipt account keys');
+  const keys = keyGroups.flat();
+  if (!keys.length || new Set(keys).size !== keys.length) throw new Error('Invalid or duplicate receipt account keys');
+  const accountIdx = keys.indexOf(walletStr);
+  const fee = rpcU64(meta.fee, 'Network fee');
+  if (!Array.isArray(meta.preBalances) || !Array.isArray(meta.postBalances)
+    || meta.preBalances.length !== keys.length || meta.postBalances.length !== keys.length)
+    throw new Error('Native balance recording does not match receipt account keys');
   let solDelta = 0n;
+  const nativeBefore = meta.preBalances.map(v => rpcU64(v, 'Before native balance'));
+  const nativeAfter = meta.postBalances.map(v => rpcU64(v, 'After native balance'));
   if (accountIdx >= 0) {
-    const before = BigInt(meta.preBalances[accountIdx] ?? 0);
-    const after = BigInt(meta.postBalances[accountIdx] ?? 0);
+    const before = nativeBefore[accountIdx]!;
+    const after = nativeAfter[accountIdx]!;
     solDelta = after - before;
   }
 
@@ -143,27 +157,24 @@ export async function adaptToLandedTrades(
   // Token deltas for our wallet — merge pre and post token balance arrays
   // -------------------------------------------------------------------------
 
-  const pre = meta.preTokenBalances ?? [];
-  const post = meta.postTokenBalances ?? [];
+  if (!Array.isArray(meta.preTokenBalances) || !Array.isArray(meta.postTokenBalances))
+    throw new Error('Token balance recording is unavailable');
+  const pre = meta.preTokenBalances;
+  const post = meta.postTokenBalances;
 
   const deltasByMint = new Map<string, bigint>();
-  const seen = new Set<string>();
-
-  // Post balances — may be increase (buy) or decrease (sell)
-  for (const b of post) {
-    if (b.owner !== walletStr) continue;
-    seen.add(b.mint);
-    const preAmt = BigInt(
-      pre.find((p) => p.owner === walletStr && p.mint === b.mint)?.uiTokenAmount?.amount ?? '0',
-    );
-    const postAmt = BigInt(b.uiTokenAmount?.amount ?? '0');
-    deltasByMint.set(b.mint, postAmt - preAmt);
-  }
-
-  // Pre-only balances — account was closed (full sell)
-  for (const b of pre) {
-    if (b.owner !== walletStr || seen.has(b.mint)) continue;
-    deltasByMint.set(b.mint, -BigInt(b.uiTokenAmount?.amount ?? '0'));
+  for (const [rows, sign] of [[pre, -1n], [post, 1n]] as const) {
+    const accounts = new Set<number>();
+    for (const b of rows) {
+      if (!b || typeof b.owner !== 'string' || !b.owner || typeof b.mint !== 'string' || !b.mint
+        || !Number.isSafeInteger(b.accountIndex) || b.accountIndex < 0 || b.accountIndex >= keys.length || accounts.has(b.accountIndex))
+        throw new Error('Invalid or duplicate token account balance');
+      accounts.add(b.accountIndex);
+      if (typeof b.uiTokenAmount?.amount !== 'string') throw new Error('Token raw quantity must be a string');
+      const amount = rpcU64(b.uiTokenAmount.amount, 'Token raw quantity');
+      if (b.owner !== walletStr) continue;
+      deltasByMint.set(b.mint, (deltasByMint.get(b.mint) ?? 0n) + sign * amount);
+    }
   }
 
   // -------------------------------------------------------------------------

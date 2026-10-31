@@ -300,8 +300,8 @@ describe('Test 3 — decision flows guard → executor → adapter → portfolio
         version: 0,
         meta: {
           fee: 5000,
-          preBalances: [1_000_000, 0],
-          postBalances: [900_000, 0],
+          preBalances: [1_000_000],
+          postBalances: [900_000],
           preTokenBalances: [],
           postTokenBalances: [
             {
@@ -346,6 +346,46 @@ describe('Test 3 — decision flows guard → executor → adapter → portfolio
 
     expect(portfolio.appliedTrades).toHaveLength(1);
     expect(portfolio.appliedTrades[0]!.slot).toBe(200);
+  });
+
+  it('reports receipt-read failures through the execution error path without applying a trade', async () => {
+    const { opts, executor, portfolio } = makeOpts({ rpcPool: { call: vi.fn().mockRejectedValue(new Error('receipt unavailable')) } });
+    executor.submitResult = { kind: 'landed', intentId: 'x', signature: 'landed-sig', slot: 200, submitterUsed: 'rpc', landedAt: Date.now() };
+    const runtime = new StrategyRuntime(opts);
+    const errors: Array<{ phase: string; error: Error }> = [];
+    runtime.on('strategy-error', e => errors.push(e));
+    await runtime.register(new DecidingStrategy());
+    runtime.start();
+    try {
+      await opts.signalQueue.push(makeSignal('swap', 'failed-receipt'));
+      await opts.signalQueue.drain();
+      await new Promise<void>(r => setImmediate(r));
+      await new Promise<void>(r => setImmediate(r));
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.phase).toBe('execution');
+      expect(errors[0]!.error.message).toBe('receipt unavailable');
+      expect(portfolio.appliedTrades).toHaveLength(0);
+    } finally { runtime.stop(); }
+  });
+
+  it('rechecks quarantine before a queued decision can submit after an execution error trips its guard', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const { opts, executor } = makeOpts({ guards: { errorThreshold: { errors: 0, windowMs: 1000 } },
+      rpcPool: { call: vi.fn(async () => { await gate; throw new Error('receipt unavailable'); }) } });
+    executor.submitResult = { kind: 'landed', intentId: 'x', signature: 'landed-sig', slot: 200, submitterUsed: 'rpc', landedAt: Date.now() };
+    const runtime = new StrategyRuntime(opts);
+    await runtime.register(new DecidingStrategy());
+    runtime.start();
+    try {
+      await opts.signalQueue.push(makeSignal('swap', 'queued-first'));
+      await opts.signalQueue.push(makeSignal('swap', 'queued-second'));
+      await opts.signalQueue.drain();
+      release();
+      await new Promise<void>(r => setImmediate(r));
+      await new Promise<void>(r => setImmediate(r));
+      expect(executor.submittedIntents).toHaveLength(1);
+    } finally { release(); runtime.stop(); }
   });
 });
 

@@ -7,6 +7,8 @@ import type { SignalFilter } from './filter.js';
 
 export type Decision = TradeIntent;
 export type HookPhase =
+  /** Wallet resolution, submission, receipt adaptation and portfolio updates. */
+  | 'execution'
   | 'onStart'
   | 'onSignal'
   | 'onExecutionResult'
@@ -36,6 +38,6 @@ export abstract class Strategy {
   onBalanceChange?(wallet: string, deltas: BalanceDelta[], ctx: StrategyContext): Promise<void>;
   onTick?(tsMs: number, ctx: StrategyContext): Promise<void>;
 
-  /** Synchronous reporter — must NOT await. Called on any uncaught hook error. */
+  /** Synchronous reporter — must NOT await. Called on hook or execution-pipeline errors. */
   onError?(err: Error, phase: HookPhase, ctx: StrategyContext): void;
 }

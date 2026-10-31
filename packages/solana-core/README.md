@@ -10,6 +10,7 @@ Shared primitives for the AP3X Solana substrate: public keys, encodings, Borsh, 
 
 - **Keys** — `PublicKey`: an immutable 32-byte key. Build with `PublicKey.fromBase58(s)` or `PublicKey.fromBytes(bytes)`; read with `toBase58()`, `toBuffer()` (returns a copy) and `equals(other)`. PDA derivation lives in `@ap3x/solana-tx`, not here.
 - **Encodings** — `base58.encode` / `base58.decode`; `compactU16.encode` / `compactU16.decode(bytes, offset)` (returns `CompactU16Decoded`: `{ value, length }`).
+- **RPC quantities** — `rpcU64(value, field?)` returns an exact `bigint` from a safe integer, bigint or canonical decimal u64 string. Missing values, unsafe JSON numbers, negative/fractional quantities and overflow throw; they never become zero.
 - **Borsh** — `Reader` and `Writer` (also under the `borsh` namespace). `Reader` covers `readU8/U16/U32/U64/I64`, `readBool`, `readBytes(n)`, `readString`, `readPubkey`, `readVec`, `readOption`; `Writer` has the matching `write*` methods and `toBytes()`. 64-bit values are `bigint`. Reading past the end of the buffer throws.
 - **Clusters** — `Cluster` enum (`Mainnet`, `Devnet`, `Testnet`, `Custom`) and `clusterRpcUrl(cluster, customUrl?)`. `Custom` requires `customUrl`.
 - **Errors** — abstract `Ap3xError` (stable `code`, optional `cause`) and its subclasses `RpcError` (`rpc.<RpcErrorCode>`), `DecodingError` (`decode`), `TimeoutError` (`timeout`) and `ConfigError` (`config`), each with a typed `meta`.

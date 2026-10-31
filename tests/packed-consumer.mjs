@@ -47,6 +47,9 @@ for (const format of ['ESM', 'CommonJS']) {
   test(`packed ${format}: public entrypoints and exact transfer details`, async () => {
     const modules = new Map(await Promise.all(packages.map(async name => [name, await load(name)])));
     exactDecoder(modules.get('@ap3x/solana-core'), modules.get('@ap3x/solana-spl'));
+    const core = modules.get('@ap3x/solana-core');
+    assert.equal(core.rpcU64('18446744073709551615'), 18446744073709551615n);
+    assert.throws(() => core.rpcU64(Number.MAX_SAFE_INTEGER + 1));
     const connectivity = modules.get('@ap3x/solana-connectivity');
     assert.ok(existsSync(path.join(connectivity.resolveProtoDir(), 'yellowstone.proto')));
   });

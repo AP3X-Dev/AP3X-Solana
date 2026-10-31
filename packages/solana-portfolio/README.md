@@ -24,6 +24,12 @@ which replays buys and sells since the position was opened. `method` selects
 Transfer-ins take their basis from the optional `transferBasis` hook, or are
 marked `basisUnresolved`.
 
+Historical reconstruction stops at an unavailable, incorrectly bound or
+incomplete receipt instead of joining older lots across the evidence gap.
+Successful execution, exact fees/native balances and indexed token quantities
+are required; inventory held before that boundary remains unresolved. Numeric
+zero is used only when explicitly recorded, never as a missing fee or quantity.
+
 `Reconciler` compares stored positions with on-chain balances on an interval,
 emits drift events, and rebuilds drifted positions via `rebuildPosition`.
 Both token programs must return explicit account arrays with valid mint keys

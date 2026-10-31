@@ -11,19 +11,20 @@ const now = () => Math.floor(Date.now() / 1000);
 
 /** A tx where the wallet's token balance goes pre → post and it spends `solOut` beyond the fee. */
 function tx(slot: number, pre: bigint, post: bigint, solOut: bigint, extra: Record<string, unknown> = {}) {
-  const tb = (amount: bigint) => [{ owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: amount.toString() } }];
+  const tb = (amount: bigint) => [{ accountIndex: 1, owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: amount.toString() } }];
   return {
     slot,
     meta: {
-      preBalances: [1_000_000n],
-      postBalances: [1_000_000n - 5_000n - solOut],
+      err: null,
+      preBalances: [1_000_000n, 0n, 0n],
+      postBalances: [1_000_000n - 5_000n - solOut, 0n, 0n],
       fee: 5_000,
       preTokenBalances: pre > 0n ? tb(pre) : [],
       postTokenBalances: post > 0n ? tb(post) : [],
       logMessages: [],
       ...extra,
     },
-    transaction: { message: { accountKeys: [wallet.toBase58()], instructions: [] }, signatures: [`s${slot}`] },
+    transaction: { message: { accountKeys: [wallet.toBase58(), mint.toBase58(), other.toBase58()], instructions: [] }, signatures: [`s${slot}`] },
   };
 }
 
@@ -49,6 +50,35 @@ const recon = (pool: RpcPool, extra = {}) =>
   new CostBasisReconstructor({ rpcPool: pool, tracerRegistry: new SwapTracerRegistry(), ...extra });
 
 describe('CostBasisReconstructor history replay', () => {
+  it('does not manufacture basis from unknown execution or missing/inexact fee and native balances', async () => {
+    const invalid = [
+      { err: undefined }, { fee: undefined }, { fee: null }, { fee: -1 }, { fee: 0.5 }, { fee: Number.MAX_SAFE_INTEGER + 1 },
+      { preBalances: undefined }, { preBalances: [Number.MAX_SAFE_INTEGER + 1] }, { postBalances: [-1] },
+      { preTokenBalances: undefined }, { postTokenBalances: [{ owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: {} }] },
+    ];
+    for (const extra of invalid) {
+      const { pool } = rpc([{ slot: 1, tx: tx(1, 0n, 100n, 1000n, { err: null, ...extra }) }]);
+      const lots = await recon(pool).reconstruct(wallet, mint, 100n);
+      expect(lots).toEqual([expect.objectContaining({ amount: 100n, basisUnresolved: true, source: 'cold-start-unresolved' })]);
+    }
+  });
+
+  it('does not bridge an unavailable history receipt into older apparently known basis', async () => {
+    const { pool, calls } = rpc([{ slot: 3, tx: tx(3, 50n, 100n, 500n, { err: null }) },
+      { slot: 2, tx: null }, { slot: 1, tx: tx(1, 0n, 50n, 100n, { err: null }) }]);
+    const lots = await recon(pool).reconstruct(wallet, mint, 100n);
+    expect(lots.some(l => l.amount === 50n && l.basisUnresolved)).toBe(true);
+    expect(calls.filter(c => c.method === 'getTransaction').map(c => c.params[0])).toEqual(['s3', 's2']);
+  });
+
+  it('keeps receipt signature/slot mismatches unresolved', async () => {
+    for (const field of ['signature', 'slot']) {
+      const receipt = tx(1, 0n, 100n, 1000n, { err: null });
+      if (field === 'signature') receipt.transaction.signatures = ['wrong']; else receipt.slot = 2;
+      const { pool } = rpc([{ slot: 1, tx: receipt }]);
+      expect((await recon(pool).reconstruct(wallet, mint, 100n))[0]!.basisUnresolved).toBe(true);
+    }
+  });
   it('buy, partial sell, buy leaves the right lots (FIFO)', async () => {
     // Oldest → newest: buy 100 for 1000, sell 60, buy 50 for 900. Holding 90.
     const { pool } = rpc([
@@ -103,10 +133,10 @@ describe('CostBasisReconstructor history replay', () => {
 
   it('transfer-ins take their basis from the hook, keyed by the sender', async () => {
     const transfer = tx(1, 0n, 50n, 0n, {
-      preTokenBalances: [{ owner: other.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '80' } }],
+      preTokenBalances: [{ accountIndex: 2, owner: other.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '80' } }],
       postTokenBalances: [
-        { owner: other.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '30' } },
-        { owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '50' } },
+        { accountIndex: 2, owner: other.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '30' } },
+        { accountIndex: 1, owner: wallet.toBase58(), mint: mint.toBase58(), uiTokenAmount: { amount: '50' } },
       ],
     });
     const transferBasis = vi.fn(({ source }: { source: PublicKey | undefined }) => (source?.equals(other) ? 123n : undefined));
