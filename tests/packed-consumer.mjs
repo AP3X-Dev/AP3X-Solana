@@ -5,6 +5,7 @@ import { existsSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 
 const require = createRequire(import.meta.url);
 const packages = Object.keys(JSON.parse(readFileSync(new URL('./package.json', import.meta.url))).dependencies);
@@ -64,6 +65,38 @@ for (const format of ['ESM', 'CommonJS']) {
     assert.deepEqual(await vault.decrypt(key, nonce, ciphertext), plain);
     ciphertext[0] ^= 1;
     await assert.rejects(() => vault.decrypt(key, nonce, ciphertext));
+  });
+  test(`packed ${format}: full stream preserves inner instruction recording evidence`, async () => {
+    const { subscribeHeliusTransactions } = await load('@ap3x/solana-connectivity');
+    const { WebSocketServer } = createRequire(require.resolve('@ap3x/solana-connectivity'))('ws');
+    const server = new WebSocketServer({ port: 0 });
+    let stream;
+    const got = [];
+    try {
+      await once(server, 'listening');
+      server.on('connection', socket => socket.on('message', raw => {
+        const request = JSON.parse(raw.toString());
+        socket.send(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: 1 }));
+        for (const [index, metadata] of [{}, { innerInstructions: null }, { innerInstructions: [] }].entries()) {
+          socket.send(JSON.stringify({ jsonrpc: '2.0', method: 'transactionNotification', params: { result: {
+            signature: `presence-${index}`, slot: index, transaction: { transaction: ['AQID', 'base64'],
+              meta: { err: null, fee: 5000, ...metadata } },
+          } } }));
+        }
+      }));
+      stream = await subscribeHeliusTransactions({ url: `ws://127.0.0.1:${server.address().port}`, accountInclude: ['fixture'] },
+        { onTransaction: tx => got.push(tx) });
+      const deadline = Date.now() + 5000;
+      while (got.length < 3 && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
+      assert.equal(got.length, 3);
+      assert.deepEqual(got.map(tx => tx.full.innerInstructionsRecorded), [undefined, false, true]);
+      assert.deepEqual(got.map(tx => tx.full.innerInstructions), [[], [], []]);
+      assert.equal(Object.hasOwn(got[0].full, 'innerInstructionsRecorded'), false);
+    } finally {
+      stream?.close();
+      for (const socket of server.clients) socket.terminate();
+      await new Promise(resolve => server.close(resolve));
+    }
   });
   test(`packed ${format}: invocation identity distinguishes unlogged outer instructions and ancestor rollback`, async () => {
     const { mapInvocationContext } = await load('@ap3x/solana-events');

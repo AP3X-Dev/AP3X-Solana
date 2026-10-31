@@ -36,6 +36,11 @@ import {
 } from './geyser-client';
 import type { CheckpointStore, Checkpoint } from './checkpoint-store';
 
+// Load declared transport dependencies during collection. Cold module loading must
+// not outlive a timed-out setup hook and open its server after teardown. Rejections
+// are asserted by the integration hook so the fake-adapter unit suite still runs.
+const transportModules = await Promise.allSettled([import('@grpc/grpc-js'), import('@grpc/proto-loader')]);
+
 // ---------------------------------------------------------------------------
 // Fake gRPC adapter
 // ---------------------------------------------------------------------------
@@ -681,7 +686,7 @@ describe('GeyserClient — errors', () => {
 // ---------------------------------------------------------------------------
 
 describe('GeyserClient — integration with real gRPC loopback', () => {
-  // Lazy-load so a failed grpc-js install doesn't break the unit suite.
+  // Failed transport imports belong to the integration suite, not the unit suite.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let grpc: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -692,8 +697,10 @@ describe('GeyserClient — integration with real gRPC loopback', () => {
   let tmpDir: string;
 
   beforeAll(async () => {
-    grpc = await import('@grpc/grpc-js');
-    protoLoader = await import('@grpc/proto-loader');
+    if (transportModules[0].status === 'rejected') throw transportModules[0].reason;
+    if (transportModules[1].status === 'rejected') throw transportModules[1].reason;
+    grpc = transportModules[0].value;
+    protoLoader = transportModules[1].value;
     tmpDir = mkdtempSync(join(tmpdir(), 'geyser-it-'));
     const protoPath = resolve(resolveProtoDir(), 'yellowstone.proto');
     const pkg = protoLoader.loadSync(protoPath, {
