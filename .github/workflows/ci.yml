@@ -62,10 +62,10 @@ jobs:
         run: pnpm test:packed
 
       - name: Verify Jito proto loads
-        run: pnpm --filter @ap3x/solana-executor exec node -e 'import("./dist/proto/load.js").then((m) => m.loadSearcherProto())'
+        run: node scripts/check-jito-proto.mjs esm
 
       - name: Verify Jito CommonJS proto loads
-        run: pnpm --filter @ap3x/solana-executor exec node -e 'require("./dist/proto/load.cjs").loadSearcherProto()'
+        run: node scripts/check-jito-proto.mjs cjs
 
       # Inspect every workspace and the full transitive graph, including
       # aliases and the entire prohibited Metaplex namespace.
