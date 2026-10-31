@@ -529,6 +529,16 @@ describe('runBacktest — intentToTrade provided', () => {
     expect(result.sharpe).toBeCloseTo(750 / Math.sqrt((1250 ** 2 + 1250 ** 2) / 1), 6);
   });
 
+  it('refuses to score a backtest whose settlement cash flow is unresolved', async () => {
+    const mint = makeMintPk();
+    const fixturePath = writeFixture('unknown-cash.jsonl.gz', [makeSignal('unknown-cash', 'swap', 200, 2001)]);
+    await expect(runBacktest({ strategy: new AlwaysDecideStrategy(), fixtureSource: new FixtureSignalSource({ path: fixturePath }),
+      clock: makeCounterClock(7000), intentToTrade: (_intent, result) => result.kind !== 'landed' ? [] : [{
+        signature: result.signature, slot: result.slot, wallet: PublicKey.fromBase58(SYSTEM_PROGRAM), mint,
+        amountDelta: 100n, solFlowLamports: null, feeLamports: 0n, source: 'executor',
+      }] })).rejects.toThrow(/unresolved/);
+  });
+
   it('realizes PnL when intentToTrade produces a sell after a buy', async () => {
     const mint = makeMintPk();
     // Write exactly 2 signals: buy then sell

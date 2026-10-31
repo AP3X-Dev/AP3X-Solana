@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -63,6 +64,33 @@ for (const format of ['ESM', 'CommonJS']) {
     assert.deepEqual(await vault.decrypt(key, nonce, ciphertext), plain);
     ciphertext[0] ^= 1;
     await assert.rejects(() => vault.decrypt(key, nonce, ciphertext));
+  });
+  test(`packed ${format}: unresolved portfolio settlement survives restart and resolves once`, async () => {
+    const core = await load('@ap3x/solana-core');
+    const { FilePortfolioStore } = await load('@ap3x/solana-portfolio');
+    const tempRoot = path.resolve(tmpdir());
+    const dir = mkdtempSync(path.join(tempRoot, 'ap3x-portfolio-packed-'));
+    try {
+      const wallet = core.PublicKey.fromBytes(new Uint8Array(32).fill(71));
+      const mint = core.PublicKey.fromBytes(new Uint8Array(32).fill(72));
+      const store = new FilePortfolioStore({ dir });
+      const buy = { wallet, mint, signature: 'buy', slot: 1, amountDelta: 100n, solFlowLamports: -1000n, feeLamports: 0n, source: 'external' };
+      await store.applyLandedTrade(buy);
+      const sale = { ...buy, signature: 'sale', slot: 2, amountDelta: -50n, solFlowLamports: null };
+      await store.applyLandedTrade(sale);
+      const reopened = new FilePortfolioStore({ dir });
+      await assert.rejects(() => reopened.getRealizedPnl(wallet, mint), error => error.code === 'portfolio.pnl_unresolved');
+      assert.equal((await reopened.getPosition(wallet, mint)).lots[0].amount, 50n);
+      assert.equal((await reopened.getRealizedPnlStatus(wallet, mint)).complete, false);
+      await reopened.resolveRealizedPnl(wallet, mint, 'sale', 1500n, 500n);
+      await reopened.resolveRealizedPnl(wallet, mint, 'sale', 1500n, 500n);
+      assert.equal(await reopened.getRealizedPnl(wallet, mint), 1000n);
+      assert.deepEqual(await reopened.applyLandedTrade(sale), []);
+    } finally {
+      assert.equal(path.dirname(path.resolve(dir)), tempRoot);
+      assert.ok(path.basename(dir).startsWith('ap3x-portfolio-packed-'));
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
   test(`packed ${format}: Jito proto helper finds only installed runtime assets`, async () => {
     const base = './node_modules/@ap3x/solana-executor/dist/proto/load.';

@@ -24,13 +24,17 @@ export interface Position {
   lastUpdatedSlot: number;
 }
 
+/** One receipt aggregate per wallet/mint. Split instruction legs must be aggregated before applying. */
 export interface LandedTrade {
   signature: string;
   slot: number;
   wallet: PublicKey;
   mint: PublicKey;
   amountDelta: bigint;
-  solFlowLamports: bigint;
+  /** Per-mint cash flow; null when the receipt does not establish its allocation. */
+  solFlowLamports: bigint | null;
+  /** Receipt-wide observation, never a per-mint acquisition cost or sale proceeds. */
+  transactionNetSolFlowLamports?: bigint;
   feeLamports: bigint;
   source: 'executor' | 'external';
 }
@@ -46,11 +50,26 @@ export interface PositionChange {
 export interface RealizedPnlEvent {
   wallet: PublicKey;
   mint: PublicKey;
-  realized: bigint;
-  costBasis: bigint;
-  proceeds: bigint;
+  realized: bigint | null;
+  costBasis: bigint | null;
+  proceeds: bigint | null;
   basisUnresolved: boolean;
   slot: number;
+}
+
+/** Attribution status of stored disposals; this is not complete chain-history coverage. */
+export interface RealizedPnlStatus {
+  knownRealizedLamports: bigint;
+  complete: boolean;
+  unresolvedSignatures: string[];
+}
+
+export class IncompletePnlError extends Error {
+  readonly code = 'portfolio.pnl_unresolved';
+  constructor(readonly signatures: readonly string[]) {
+    super('PnL is unresolved: acquisition basis or settlement proceeds are not established');
+    this.name = 'IncompletePnlError';
+  }
 }
 
 export interface DriftEvent {

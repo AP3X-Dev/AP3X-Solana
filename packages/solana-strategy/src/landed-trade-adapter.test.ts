@@ -215,6 +215,8 @@ describe('adaptToLandedTrades', () => {
     expect(mintAResult?.amountDelta).toBe(4000n);
     expect(mintBResult?.amountDelta).toBe(-5000n);
     expect(mintCResult?.amountDelta).toBe(2000n);
+    expect(result.map(t => t.solFlowLamports)).toEqual([null, null, null]);
+    expect(result.map(t => t.transactionNetSolFlowLamports)).toEqual([-10_000_000n, -10_000_000n, -10_000_000n]);
   });
 
   // -------------------------------------------------------------------------

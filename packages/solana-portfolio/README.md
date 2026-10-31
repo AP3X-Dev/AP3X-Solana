@@ -46,6 +46,27 @@ timer, and `stop()` prevents future scheduled passes.
   `currentPriceLamports`, which is lamports per token base unit × `PRICE_SCALE`
   (1e9, the same convention as the pump.fun price helpers).
 
+Numeric reads throw `IncompletePnlError` when the corresponding recorded
+proceeds or basis remain unresolved. `getRealizedPnlStatus(wallet, mint)` exposes
+the known subtotal and unresolved sale signatures without treating that subtotal
+as the full result. Its completeness describes stored disposals, not complete
+chain history. Existing files retain their stored figures; migration does not
+retroactively prove old acquisition or settlement evidence.
+
+`LandedTrade` represents one receipt aggregate per wallet/mint. Its
+`solFlowLamports` can be `null`; unresolved acquisitions keep `basisUnresolved`
+and unresolved sales retain quantities with nullable PnL fields. Receipt-wide
+`transactionNetSolFlowLamports` is an observation, not a cost assigned to every
+mint. `resolveRealizedPnl(wallet, mint, signature, proceeds, costBasis)` records an
+explicitly established, audited settlement. It refuses conflicts with known
+facts and repeated equal resolutions do not count profit twice.
+
+New receipt aggregates deduplicate by signature/mint across restart; conflicting
+aggregates reject. This registry begins with the new format and does not invent
+deduplication evidence for pre-upgrade applications. Bigints use explicit tags;
+old numeric fields are still read without interpreting address/signature strings
+as numbers. Daily closes retain unknown PnL/basis as `null` beside known subtotals.
+
 FIFO/LIFO recognize the full supplied sale proceeds and consume basis from
 the selected lots. Average cost pools the basis, rounds the sold basis down
 to lamports, and uses cumulative integer allocation across lots so remaining

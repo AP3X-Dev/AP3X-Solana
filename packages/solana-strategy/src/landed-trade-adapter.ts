@@ -104,11 +104,14 @@ export interface AdaptOpts {
  * `dropped`, `timeout`, `reverted`, and `rejected` results produce zero trades
  * and do not trigger any RPC call.
  *
- * Note on solFlowLamports: this is the wallet's NET SOL delta
+ * With one changed mint, solFlowLamports retains the wallet's NET SOL delta
  * (postBalance - preBalance). The fee is already baked into that delta
  * naturally (the fee deducts from the payer's balance before posting).
  * `feeLamports` is extracted separately for telemetry only — callers must
  * not add it back in to avoid double-counting.
+ * Multiple changed mints have null per-mint cash flow: transactionNetSolFlowLamports
+ * retains the observation without assigning it to every asset. Exact settlement
+ * still requires instruction/event attribution; a net delta is not universal cost proof.
  */
 export async function adaptToLandedTrades(
   result: ExecutionResult,
@@ -182,6 +185,7 @@ export async function adaptToLandedTrades(
   // -------------------------------------------------------------------------
 
   const trades: LandedTrade[] = [];
+  const changedMints = [...deltasByMint.values()].filter(delta => delta !== 0n).length;
   for (const [mintStr, delta] of deltasByMint) {
     if (delta === 0n) continue;
     trades.push({
@@ -190,7 +194,8 @@ export async function adaptToLandedTrades(
       wallet: opts.walletAddress,
       mint: PublicKey.fromBase58(mintStr),
       amountDelta: delta,
-      solFlowLamports: solDelta,
+      solFlowLamports: changedMints === 1 ? solDelta : null,
+      ...(changedMints > 1 ? { transactionNetSolFlowLamports: solDelta } : {}),
       feeLamports: fee,
       source: 'executor',
     });

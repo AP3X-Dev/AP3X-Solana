@@ -345,6 +345,20 @@ export class StrategyRuntime extends EventEmitter {
           rec.walletAddresses.set(fullIntent.wallet, walletAddress);
         }
 
+        const requireCompleteAccounting = this.guardsCfg.requireCompleteAccounting === true
+          || this.guardsCfg.maxLossPerDayLamports !== undefined || this.guardsCfg.drawdownThreshold !== undefined;
+        if (requireCompleteAccounting) {
+          let unknownPositions = 0;
+          for (const position of await this.opts.portfolio.getAllPositions(walletAddress)) {
+            const status = await this.opts.portfolio.getRealizedPnlStatus?.(walletAddress, position.mint);
+            if (position.lots.some(l => l.basisUnresolved) || status?.complete === false) unknownPositions++;
+          }
+          if (unknownPositions) {
+            await this.tripGuard(rec, { guard: 'requireCompleteAccounting', value: unknownPositions });
+            return;
+          }
+        }
+
         // C2 carryover: executor.submit runs INSIDE this queue callback
         const result = await this.opts.executor.submit(fullIntent);
 
@@ -354,11 +368,23 @@ export class StrategyRuntime extends EventEmitter {
           walletAddress,
         });
 
-        for (const trade of trades) {
-          const realizedBefore = await this.opts.portfolio.getRealizedPnl(trade.wallet, trade.mint);
-          await this.opts.portfolio.applyLandedTrade(trade);
-          const realizedAfter = await this.opts.portfolio.getRealizedPnl(trade.wallet, trade.mint);
-          const lossTrip = rec.guards.recordRealized(realizedAfter - realizedBefore);
+        const pnl = async (trade: LandedTrade) => this.opts.portfolio.getRealizedPnlStatus
+          ? this.opts.portfolio.getRealizedPnlStatus(trade.wallet, trade.mint)
+          : { knownRealizedLamports: await this.opts.portfolio.getRealizedPnl(trade.wallet, trade.mint), complete: true, unresolvedSignatures: [] };
+        const before = await Promise.all(trades.map(pnl));
+        // Retain every receipt aggregate before evaluating PnL: one unresolved
+        // sale must not prevent the other mints' inventory from being recorded.
+        const applied: boolean[] = [];
+        for (const trade of trades) applied.push((await this.opts.portfolio.applyLandedTrade(trade)).length > 0);
+        const after = await Promise.all(trades.map(pnl));
+        const unknown = trades.filter((trade, i) => trade.solFlowLamports === null && applied[i] || !before[i]!.complete || !after[i]!.complete).length;
+        if (unknown && requireCompleteAccounting) {
+          await this.tripGuard(rec, { guard: 'requireCompleteAccounting', value: unknown });
+          return;
+        }
+        for (let i = 0; i < trades.length; i++) {
+          if (!before[i]!.complete || !after[i]!.complete) continue;
+          const lossTrip = rec.guards.recordRealized(after[i]!.knownRealizedLamports - before[i]!.knownRealizedLamports);
           if (lossTrip) {
             void this.tripGuard(rec, lossTrip);
             return;
