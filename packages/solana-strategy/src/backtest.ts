@@ -35,6 +35,7 @@ import type { FixtureSignalSource } from '@ap3x/solana-signals';
 import type { TradeIntent, ExecutionResult } from '@ap3x/solana-executor';
 import { reduceLots, unrealizedPnl } from '@ap3x/solana-portfolio';
 import type { RealizedPnlEvent } from '@ap3x/solana-portfolio';
+import { IncompletePnlError } from '@ap3x/solana-portfolio';
 import type { LandedTrade, Position, PositionChange } from '@ap3x/solana-portfolio';
 import type { WalletHandle } from '@ap3x/solana-vault';
 
@@ -186,6 +187,7 @@ class InMemoryPortfolio extends EventEmitter implements PortfolioLike {
   }
 
   async applyLandedTrade(trade: LandedTrade): Promise<PositionChange[]> {
+    if (trade.solFlowLamports === null) throw new IncompletePnlError([trade.signature]);
     const walletStr = trade.wallet.toBase58();
     const mintStr = trade.mint.toBase58();
 
@@ -546,7 +548,9 @@ export async function runBacktest(opts: BacktestOpts): Promise<BacktestResult> {
   const portfolio = new InMemoryPortfolio();
   const stateStore = new InMemoryStrategyStateStore();
   const pnlSeries: BacktestResult['pnlSeries'] = [];
+  let incompleteAccounting: IncompletePnlError | null = null;
   portfolio.on('realized-pnl', (e: Pick<RealizedPnlEvent, 'realized' | 'slot'>) => {
+    if (e.realized === null) { incompleteAccounting = new IncompletePnlError([]); return; }
     const cumulative = (pnlSeries.at(-1)?.cumulative ?? 0n) + e.realized;
     pnlSeries.push({ tsMs: opts.clock(), slot: e.slot, realized: e.realized, cumulative });
   });
@@ -588,6 +592,10 @@ export async function runBacktest(opts: BacktestOpts): Promise<BacktestResult> {
     // well below the overflow threshold (which Node re-clamps to 1ms).
     tickIntervalMs: 2_147_483_647,
     stateStoreFactory: (_sn: string, _id: string) => stateStore,
+  });
+
+  runtime.on('strategy-error', ({ error }: { error: unknown }) => {
+    if (error instanceof IncompletePnlError) incompleteAccounting = error;
   });
 
   // 6. Wire executor → signalIdByIntent: the InstrumentedStrategy records
@@ -636,9 +644,11 @@ export async function runBacktest(opts: BacktestOpts): Promise<BacktestResult> {
   // 11. Stop the runtime
   runtime.stop();
   await runtime.deregister(instrumented.name);
+  if (incompleteAccounting) throw incompleteAccounting;
 
   // 12. Build and return BacktestResult
   const finalPositions = portfolio.allPositionsFlat();
+  if (finalPositions.some(p => p.lots.some(l => l.basisUnresolved))) throw new IncompletePnlError([]);
   const sharpe = sharpeRatio(pnlSeries.map((p) => p.realized));
   return {
     trades: capturedTrades,

@@ -33,6 +33,10 @@ Transaction execution engine for the AP3X Solana runtime. Builds, signs, and lan
 
 This package depends on `@grpc/grpc-js` and `@grpc/proto-loader`. These are **controlled exceptions** to the project's zero-ecosystem-deps convention, approved in PRP-02 Task 28 (Jito gRPC submitter). They are required solely for the `jito-grpc` submitter path and carry no Solana-SDK coupling.
 
+## Licenses
+
+AP3X implementation code is MIT licensed. The vendored Jito protocol definitions are Apache-2.0. Their license text and provenance notice ship in `dist/proto/LICENSE_APACHE2` and `dist/proto/NOTICE.md`.
+
 ## Boundary
 
 `solana-executor` may import from `core`, `connectivity`, `tx`, and `vault`. It must not import from `spl`, `metaplex`, `events`, `portfolio`, or any vertical package (`pumpfun-*`).

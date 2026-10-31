@@ -16,3 +16,6 @@ export type {
 
 export { walkInvocations } from './cpi-decoder';
 export type { InvocationWalkStep } from './cpi-decoder';
+
+export { mapInvocationContext } from './invocation-context';
+export type { InvocationInstruction, InvocationContextInput, BoundInvocation, InvocationContext } from './invocation-context';

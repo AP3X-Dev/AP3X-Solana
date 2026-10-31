@@ -74,6 +74,53 @@ const keep = (stream: TxStream) => {
 };
 
 describe('subscribeHeliusTransactions', () => {
+  it('preserves inner instruction recording presence for both full wire encodings', async () => {
+    const s = await setup();
+    const got: StreamedTransaction[] = [];
+    keep(await subscribeHeliusTransactions({ url: s.url, accountInclude: ['A'] }, { onTransaction: t => got.push(t) }));
+    const nonempty = [{ index: 0, instructions: [{ programIdIndex: 1, accounts: [0], data: '3Bxs4' }] }];
+    const values = [undefined, null, [], nonempty, {}, 'invalid'];
+    for (const wire of ['AQID', ['AQID', 'base64']]) for (const [i, value] of values.entries()) {
+      const meta = { err: null, fee: 5000, ...(value === undefined ? {} : { innerInstructions: value }) };
+      s.notify('transactionNotification', { signature: `presence-${got.length}-${i}`, slot: i,
+        transaction: { transaction: wire, meta } });
+    }
+    await until(() => got.length === values.length * 2);
+    for (let i = 0; i < got.length; i++) {
+      const full = got[i]!.full!;
+      expect(full.bytes).toEqual(Uint8Array.of(1, 2, 3));
+      const value = values[i % values.length];
+      expect(full.innerInstructionsRecorded).toBe(Array.isArray(value) ? true : value === null ? false : undefined);
+      expect(full.innerInstructions).toEqual(Array.isArray(value) ? value : []);
+      expect(Object.hasOwn(full, 'innerInstructionsRecorded')).toBe(value === null || Array.isArray(value));
+    }
+  });
+
+  it('preserves missing execution metadata as unknown instead of manufacturing success', async () => {
+    const s = await setup();
+    const got: StreamedTransaction[] = [];
+    keep(await subscribeHeliusTransactions({ url: s.url, accountInclude: ['A'] }, { onTransaction: t => got.push(t) }));
+    s.notify('transactionNotification', { signature: 'missing-meta', slot: 1 });
+    s.notify('transactionNotification', { signature: 'missing-err', slot: 2, transaction: { meta: { logMessages: [] } } });
+    s.notify('transactionNotification', { signature: 'success', slot: 3, transaction: { meta: { err: null } } });
+    await until(() => got.length === 3);
+    expect(got.map(t => t.err)).toEqual([undefined, undefined, null]);
+  });
+
+  it('does not fabricate full-transaction fees from missing or inexact metadata', async () => {
+    const s = await setup();
+    const got: StreamedTransaction[] = [];
+    keep(await subscribeHeliusTransactions({ url: s.url, accountInclude: ['A'] }, { onTransaction: t => got.push(t) }));
+    for (const [i, fee] of [undefined, -1, 0.5, Number.MAX_SAFE_INTEGER + 1, 0, 5000].entries()) {
+      s.notify('transactionNotification', { signature: `fee-${i}`, slot: i, transaction: {
+        transaction: ['AQID', 'base64'], meta: { err: null, fee },
+      } });
+    }
+    await until(() => got.length === 6);
+    expect(got.slice(0, 4).map(t => t.full)).toEqual([undefined, undefined, undefined, undefined]);
+    expect(got.slice(4).map(t => t.full?.fee)).toEqual([0, 5000]);
+  });
+
   it('subscribes once for all programs and delivers parsed transactions', async () => {
     const s = await setup();
     const got: StreamedTransaction[] = [];
@@ -101,7 +148,7 @@ describe('subscribeHeliusTransactions', () => {
     expect(got[1]).toMatchObject({ signature: 'sig2', logs: [] });
     // The whole transaction comes through with the parts of its meta that matter; none when the stream sent none.
     expect(got[0]!.full).toEqual({ bytes: Uint8Array.from([1, 2, 3]), fee: 5000, loadedAddresses: { writable: ['W'], readonly: ['R'] },
-      innerInstructions: [{ index: 0, instructions: [{ programIdIndex: 2, accounts: [0, 1], data: '3Bxs4' }] }] });
+      innerInstructions: [{ index: 0, instructions: [{ programIdIndex: 2, accounts: [0, 1], data: '3Bxs4' }] }], innerInstructionsRecorded: true });
     expect(got[1]!.full).toBeUndefined();
   });
 
@@ -122,6 +169,19 @@ describe('subscribeHeliusTransactions', () => {
 });
 
 describe('subscribeProgramLogs', () => {
+  it('preserves unknown execution and permits a later known status for the same signature', async () => {
+    const s = await setup();
+    const got: StreamedTransaction[] = [];
+    keep(await subscribeProgramLogs({ url: s.url, programIds: ['A'] }, { onTransaction: t => got.push(t) }));
+    for (const value of [
+      { signature: 'same', logs: [] }, { signature: 'same', logs: [] },
+      { signature: 'same', err: null, logs: [] }, { signature: 'same', err: null, logs: [] },
+    ]) s.notify('logsNotification', { context: { slot: 1 }, value });
+    await until(() => got.length >= 1);
+    await new Promise(r => setTimeout(r, 30));
+    expect(got.map(t => t.err)).toEqual([undefined, null]);
+  });
+
   it('opens one subscription per program and drops duplicate signatures', async () => {
     const s = await setup();
     const got: StreamedTransaction[] = [];

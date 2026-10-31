@@ -22,7 +22,7 @@
 
 import { EventEmitter } from 'node:events';
 
-import { base58, PublicKey } from '@ap3x/solana-core';
+import { base58, PublicKey, rpcU64 } from '@ap3x/solana-core';
 import type { RpcPool } from '@ap3x/solana-connectivity';
 
 import { reduceLots } from './accounting.js';
@@ -204,7 +204,12 @@ export class CostBasisReconstructor extends EventEmitter {
           sigInfo.signature,
           { maxSupportedTransactionVersion: 1, encoding: 'json' },
         ])) as RpcTransaction | null;
-        if (!tx || tx.meta?.err) continue;
+        // A history hole is a boundary, not permission to join older lots over
+        // missing evidence. The held balance at this boundary stays unresolved.
+        if (!tx?.meta || !Number.isSafeInteger(tx.slot) || tx.slot < 0 || tx.slot !== sigInfo.slot || tx.transaction?.signatures?.[0] !== sigInfo.signature
+          || tx.meta.err === undefined) return { changes, oldestSlotWalked };
+        if (tx.meta.err !== null) continue;
+        if (!completeBasisReceipt(tx)) return { changes, oldestSlotWalked };
         oldestSlotWalked = sigInfo.slot;
 
         const pre = ownedAmount(tx.meta.preTokenBalances, wallet, mint);
@@ -250,7 +255,7 @@ export class CostBasisReconstructor extends EventEmitter {
     const postBal = c.tx.meta.postBalances?.[idx];
     const solOut =
       idx >= 0 && preBal !== undefined && postBal !== undefined
-        ? BigInt(preBal) - BigInt(postBal) - (idx === 0 ? BigInt(c.tx.meta.fee ?? 0) : 0n)
+        ? rpcU64(preBal, 'Before native balance') - rpcU64(postBal, 'After native balance') - (idx === 0 ? rpcU64(c.tx.meta.fee, 'Network fee') : 0n)
         : 0n;
     if (solOut > 0n) return { ...base, costBasisLamports: solOut, source: 'cold-start-reconstructed' };
 
@@ -290,13 +295,40 @@ function accountKeys(tx: RpcTransaction): string[] {
   return [...tx.transaction.message.accountKeys, ...(loaded?.writable ?? []), ...(loaded?.readonly ?? [])];
 }
 
+/** Metadata needed by both the fallback and registered tracers, with no missing-to-zero conversions. */
+function completeBasisReceipt(tx: RpcTransaction): boolean {
+  try {
+    const keys = accountKeys(tx);
+    if (!keys.length || keys.some(k => typeof k !== 'string' || !k) || new Set(keys).size !== keys.length) return false;
+    rpcU64(tx.meta.fee, 'Network fee');
+    for (const balances of [tx.meta.preBalances, tx.meta.postBalances]) {
+      if (!Array.isArray(balances) || balances.length !== keys.length) return false;
+      for (const amount of balances) rpcU64(amount, 'Native balance');
+    }
+    for (const balances of [tx.meta.preTokenBalances, tx.meta.postTokenBalances]) {
+      if (!Array.isArray(balances)) return false;
+      const seen = new Set<number>();
+      for (const b of balances) {
+        const i = b.accountIndex;
+        if (i === undefined || !Number.isSafeInteger(i) || i < 0 || i >= keys.length || seen.has(i)
+          || !b.owner || !b.mint || typeof b.uiTokenAmount?.amount !== 'string') return false;
+        seen.add(i);
+        rpcU64(b.uiTokenAmount.amount, 'Token raw quantity');
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Sum of `owner`'s balances of `mint` across all its token accounts. */
 function ownedAmount(entries: TokenBalanceEntry[] | undefined, owner: PublicKey, mint: PublicKey): bigint {
   const o = owner.toBase58();
   const m = mint.toBase58();
   return (entries ?? [])
     .filter((b) => b.owner === o && b.mint === m)
-    .reduce((s, b) => s + BigInt(b.uiTokenAmount?.amount ?? '0'), 0n);
+    .reduce((s, b) => s + rpcU64(b.uiTokenAmount?.amount, 'Token raw quantity'), 0n);
 }
 
 /** The other owner whose balance of `mint` fell the most in this transaction. */
@@ -328,11 +360,11 @@ function toParsedTransaction(tx: RpcTransaction, sig: string, slot: number): Par
   const programIds = [...new Set(ixs.map((i) => i.programId.toBase58()))].map((b) => PublicKey.fromBase58(b));
 
   const lamports = (arr: Array<number | bigint> | undefined) =>
-    new Map((arr ?? []).map((v, i) => [keys[i] ?? String(i), BigInt(v)] as const));
+    new Map((arr ?? []).map((v, i) => [keys[i] ?? String(i), rpcU64(v, 'Native balance')] as const));
   const tokens = (arr: TokenBalanceEntry[] | undefined) =>
     (arr ?? []).flatMap((b) =>
       b.owner && b.mint
-        ? [{ owner: PublicKey.fromBase58(b.owner), mint: PublicKey.fromBase58(b.mint), amount: BigInt(b.uiTokenAmount?.amount ?? '0') }]
+        ? [{ owner: PublicKey.fromBase58(b.owner), mint: PublicKey.fromBase58(b.mint), amount: rpcU64(b.uiTokenAmount?.amount, 'Token raw quantity') }]
         : [],
     );
 
@@ -345,7 +377,7 @@ function toParsedTransaction(tx: RpcTransaction, sig: string, slot: number): Par
       postBalances: lamports(tx.meta.postBalances),
       preTokenBalances: tokens(tx.meta.preTokenBalances),
       postTokenBalances: tokens(tx.meta.postTokenBalances),
-      feeLamports: BigInt(tx.meta.fee ?? 0),
+      feeLamports: rpcU64(tx.meta.fee, 'Network fee'),
       logMessages: tx.meta.logMessages ?? [],
     },
     instructions: ixs,

@@ -19,12 +19,16 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import { PublicKey } from '@ap3x/solana-core';
 import { SignalQueue } from '@ap3x/solana-signals';
 import type { Signal } from '@ap3x/solana-signals';
 import type { ExecutionResult, TradeIntent } from '@ap3x/solana-executor';
 import type { Position, PositionChange, LandedTrade } from '@ap3x/solana-portfolio';
+import { FilePortfolioStore } from '@ap3x/solana-portfolio';
 
 import { Strategy } from './strategy.js';
 import type { StrategyContext, StrategyStateStore } from './context.js';
@@ -300,8 +304,8 @@ describe('Test 3 — decision flows guard → executor → adapter → portfolio
         version: 0,
         meta: {
           fee: 5000,
-          preBalances: [1_000_000, 0],
-          postBalances: [900_000, 0],
+          preBalances: [1_000_000],
+          postBalances: [900_000],
           preTokenBalances: [],
           postTokenBalances: [
             {
@@ -346,6 +350,122 @@ describe('Test 3 — decision flows guard → executor → adapter → portfolio
 
     expect(portfolio.appliedTrades).toHaveLength(1);
     expect(portfolio.appliedTrades[0]!.slot).toBe(200);
+  });
+
+  it('reports receipt-read failures through the execution error path without applying a trade', async () => {
+    const { opts, executor, portfolio } = makeOpts({ rpcPool: { call: vi.fn().mockRejectedValue(new Error('receipt unavailable')) } });
+    executor.submitResult = { kind: 'landed', intentId: 'x', signature: 'landed-sig', slot: 200, submitterUsed: 'rpc', landedAt: Date.now() };
+    const runtime = new StrategyRuntime(opts);
+    const errors: Array<{ phase: string; error: Error }> = [];
+    runtime.on('strategy-error', e => errors.push(e));
+    await runtime.register(new DecidingStrategy());
+    runtime.start();
+    try {
+      await opts.signalQueue.push(makeSignal('swap', 'failed-receipt'));
+      await opts.signalQueue.drain();
+      await new Promise<void>(r => setImmediate(r));
+      await new Promise<void>(r => setImmediate(r));
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.phase).toBe('execution');
+      expect(errors[0]!.error.message).toBe('receipt unavailable');
+      expect(portfolio.appliedTrades).toHaveLength(0);
+    } finally { runtime.stop(); }
+  });
+
+  it('rechecks quarantine before a queued decision can submit after an execution error trips its guard', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const { opts, executor } = makeOpts({ guards: { errorThreshold: { errors: 0, windowMs: 1000 } },
+      rpcPool: { call: vi.fn(async () => { await gate; throw new Error('receipt unavailable'); }) } });
+    executor.submitResult = { kind: 'landed', intentId: 'x', signature: 'landed-sig', slot: 200, submitterUsed: 'rpc', landedAt: Date.now() };
+    const runtime = new StrategyRuntime(opts);
+    await runtime.register(new DecidingStrategy());
+    runtime.start();
+    try {
+      await opts.signalQueue.push(makeSignal('swap', 'queued-first'));
+      await opts.signalQueue.push(makeSignal('swap', 'queued-second'));
+      await opts.signalQueue.drain();
+      release();
+      await new Promise<void>(r => setImmediate(r));
+      await new Promise<void>(r => setImmediate(r));
+      expect(executor.submittedIntents).toHaveLength(1);
+    } finally { release(); runtime.stop(); }
+  });
+
+  it('records every multi-mint quantity before quarantining unresolved cash attribution', async () => {
+    const walletPk = PublicKey.fromBase58(TOKEN_PROGRAM);
+    const metrics = { emit: vi.fn() };
+    const { opts, executor, portfolio } = makeOpts({ metrics, guards: { requireCompleteAccounting: true }, rpcPool: { call: vi.fn().mockResolvedValue({
+      slot: 200, version: 0, transaction: { signatures: ['landed-sig'], message: {
+        accountKeys: [walletPk.toBase58(), TOKEN_2022, '11111111111111111111111111111111'], instructions: [], recentBlockhash: 'blockhash',
+      } }, meta: { err: null, fee: 5000, preBalances: [10000, 0, 0], postBalances: [5000, 0, 0], preTokenBalances: [],
+        postTokenBalances: [{ accountIndex: 1, owner: walletPk.toBase58(), mint: TOKEN_2022, uiTokenAmount: { amount: '100' } },
+          { accountIndex: 2, owner: walletPk.toBase58(), mint: '11111111111111111111111111111111', uiTokenAmount: { amount: '200' } }],
+      },
+    }) } });
+    executor.submitResult = { kind: 'landed', intentId: 'x', signature: 'landed-sig', slot: 200, submitterUsed: 'rpc', landedAt: Date.now() };
+    const runtime = new StrategyRuntime(opts);
+    await runtime.register(new DecidingStrategy()); runtime.start();
+    try {
+      await opts.signalQueue.push(makeSignal('swap', 'multi-first'));
+      await opts.signalQueue.push(makeSignal('swap', 'multi-second'));
+      await opts.signalQueue.drain();
+      await new Promise<void>(r => setImmediate(r));
+      await new Promise<void>(r => setImmediate(r));
+      expect(portfolio.appliedTrades.map(t => t.amountDelta)).toEqual([100n, 200n]);
+      expect(portfolio.appliedTrades.every(t => t.solFlowLamports === null)).toBe(true);
+      expect(executor.submittedIntents).toHaveLength(1);
+      expect(metrics.emit).toHaveBeenCalledWith('strategy.tripped', expect.objectContaining({ guard: 'requireCompleteAccounting', value: 2 }));
+    } finally { runtime.stop(); }
+  });
+
+  it('persists both sides of an unresolved token swap without inventing PnL, using the real portfolio store', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'runtime-settlement-'));
+    const wallet = PublicKey.fromBase58(TOKEN_PROGRAM), mintA = PublicKey.fromBase58(TOKEN_2022);
+    const mintB = PublicKey.fromBase58('So11111111111111111111111111111111111111112');
+    const store = new FilePortfolioStore({ dir });
+    await store.applyLandedTrade({ signature: 'opening', slot: 1, wallet, mint: mintA, amountDelta: 50n,
+      solFlowLamports: -1000n, feeLamports: 0n, source: 'external' });
+    const tb = (accountIndex: number, mint: string, amount: string) => ({ accountIndex, owner: wallet.toBase58(), mint, uiTokenAmount: { amount } });
+    const { opts, executor } = makeOpts({ portfolio: store, rpcPool: { call: vi.fn().mockResolvedValue({ slot: 200,
+      transaction: { signatures: ['landed-sig'], message: { accountKeys: [wallet.toBase58(), mintA.toBase58(), mintB.toBase58()] } },
+      meta: { err: null, fee: 5000, preBalances: [10000, 0, 0], postBalances: [5000, 0, 0],
+        preTokenBalances: [tb(1, mintA.toBase58(), '50'), tb(2, mintB.toBase58(), '0')],
+        postTokenBalances: [tb(1, mintA.toBase58(), '30'), tb(2, mintB.toBase58(), '100')] },
+    }) } });
+    executor.submitResult = { kind: 'landed', intentId: 'x', signature: 'landed-sig', slot: 200, submitterUsed: 'rpc', landedAt: Date.now() };
+    const runtime = new StrategyRuntime(opts);
+    const strategy = new DecidingStrategy();
+    await runtime.register(strategy); runtime.start();
+    try {
+      await opts.signalQueue.push(makeSignal('swap', 'real-store-swap'));
+      await opts.signalQueue.drain();
+      runtime.stop();
+      await runtime.deregister(strategy.name);
+      const reopened = new FilePortfolioStore({ dir });
+      expect((await reopened.getPosition(wallet, mintA))!.lots[0]!.amount).toBe(30n);
+      expect((await reopened.getPosition(wallet, mintB))!.lots[0]).toMatchObject({ amount: 100n, basisUnresolved: true });
+      await expect(reopened.getRealizedPnl(wallet, mintA)).rejects.toThrow(/unresolved/);
+      expect((await reopened.getRealizedPnlStatus(wallet, mintA)).unresolvedSignatures).toEqual(['landed-sig']);
+    } finally { runtime.stop(); await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it.each(['basis', 'realized'] as const)('does not submit when a configured PnL limit depends on unresolved %s', async mode => {
+    const metrics = { emit: vi.fn() };
+    const { opts, executor, portfolio } = makeOpts({ metrics, guards: { maxLossPerDayLamports: 100n } });
+    const wallet = PublicKey.fromBase58(TOKEN_PROGRAM), mint = PublicKey.fromBase58(TOKEN_2022);
+    vi.spyOn(portfolio, 'getAllPositions').mockResolvedValue([{ walletAddress: wallet, mint, lastUpdatedSlot: 1,
+      lots: mode === 'basis' ? [{ amount: 1n, costBasisLamports: 0n, acquiredSlot: 1, acquiredSig: 'old', source: 'cold-start-unresolved', basisUnresolved: true }] : [] }]);
+    Object.assign(portfolio, { getRealizedPnlStatus: async () => ({ knownRealizedLamports: 0n, complete: mode !== 'realized',
+      unresolvedSignatures: mode === 'realized' ? ['old-sale'] : [] }) });
+    const runtime = new StrategyRuntime(opts), strategy = new DecidingStrategy();
+    await runtime.register(strategy); runtime.start();
+    try {
+      await opts.signalQueue.push(makeSignal('swap', `unresolved-${mode}`)); await opts.signalQueue.drain();
+      runtime.stop(); await runtime.deregister(strategy.name);
+      expect(executor.submittedIntents).toHaveLength(0);
+      expect(metrics.emit).toHaveBeenCalledWith('strategy.tripped', expect.objectContaining({ guard: 'requireCompleteAccounting', value: 1 }));
+    } finally { runtime.stop(); }
   });
 });
 

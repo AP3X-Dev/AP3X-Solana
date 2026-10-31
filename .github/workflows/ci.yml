@@ -43,6 +43,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Verify architecture rule controls
+        run: pnpm test:architecture
+
+      - name: Verify diagnostic entrypoints
+        run: pnpm test:tooling
+
       - name: Lint (package-boundary rules)
         run: pnpm lint
 
@@ -52,38 +58,19 @@ jobs:
       - name: Test (unit + coverage enforcement)
         run: pnpm -r test:coverage
 
-      - name: Verify Jito proto loads
-        run: pnpm --filter @ap3x/solana-executor exec node -e 'import("./dist/proto/load.js").then((m) => m.loadSearcherProto())'
+      - name: Test standalone packed consumers (ESM and CommonJS)
+        run: pnpm test:packed
 
-      # Substrate posture gate: none of the following may appear in the
-      # resolved dependency graph. `pnpm why <pkg>` exits 0 and prints the
-      # installers when a match is found, and prints nothing on exit 0 when
-      # there is no match. We invert that: any line that mentions the
-      # forbidden name is a failure. Runs in `shell: bash` so Windows uses
-      # git-bash (available on GitHub-hosted windows-latest runners).
+      - name: Verify Jito proto loads
+        run: node scripts/check-jito-proto.mjs esm
+
+      - name: Verify Jito CommonJS proto loads
+        run: node scripts/check-jito-proto.mjs cjs
+
+      # Inspect every workspace and the full transitive graph, including
+      # aliases and the entire prohibited Metaplex namespace.
       - name: Verify no forbidden deps
-        shell: bash
-        run: |
-          set -eo pipefail
-          FORBIDDEN=(
-            "@solana/web3.js"
-            "@solana/kit"
-            "@solana/spl-token"
-            "@metaplex-foundation/js"
-            "@metaplex-foundation/mpl-token-metadata"
-            "@metaplex-foundation/umi"
-          )
-          failed=0
-          for pkg in "${FORBIDDEN[@]}"; do
-            if pnpm why "$pkg" 2>/dev/null | grep -F -q "$pkg"; then
-              echo "::error::forbidden dependency found: $pkg"
-              pnpm why "$pkg" || true
-              failed=1
-            else
-              echo "ok: no trace of $pkg"
-            fi
-          done
-          exit $failed
+        run: pnpm test:dependencies
 
   # Nightly diagnostics against mainnet (see docs/diagnostics/README.md):
   #   1. Substrate RPC probe — the configured endpoint answers getSlot.

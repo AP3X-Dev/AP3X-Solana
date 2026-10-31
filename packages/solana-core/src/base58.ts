@@ -2,9 +2,10 @@
  * Base58 encode/decode using the Bitcoin alphabet — the same alphabet used by
  * Solana for PublicKeys, signatures, and program IDs.
  *
- * Implementation is a straightforward big-integer conversion:
- *   encode: interpret bytes as a big-endian integer, repeatedly divmod by 58
- *   decode: reverse, multiplying a BigInt accumulator by 58 for each char
+ * Implementation is the standard digit-buffer base conversion (as in bs58):
+ *   encode: fold each byte into a base-58 digit array (carry * 256)
+ *   decode: fold each char into a base-256 byte array (carry * 58)
+ * It avoids BigInt allocation per digit, which dominated ingest CPU.
  *
  * Leading zero bytes map to leading '1' characters and vice versa.
  *
@@ -37,24 +38,26 @@ export function encode(bytes: Uint8Array): string {
   let zeros = 0;
   while (zeros < bytes.length && bytes[zeros] === 0) zeros++;
 
-  // Build a BigInt from the big-endian bytes.
-  let n = 0n;
-  for (let i = 0; i < bytes.length; i++) {
-    // bytes[i] is safe here: i < bytes.length, so the element exists.
-    // The non-null assertion satisfies noUncheckedIndexedAccess.
-    n = (n << 8n) | BigInt(bytes[i]!);
+  // Base conversion on a small-int digit buffer (little-endian base 58).
+  // Hot path: ingest encodes every key and signature, so avoid BigInt.
+  // log(256)/log(58) ≈ 1.366 digits per byte.
+  const size = Math.ceil((bytes.length - zeros) * 1.366) + 1;
+  const digits = new Uint8Array(size);
+  let length = 0;
+  for (let i = zeros; i < bytes.length; i++) {
+    let carry = bytes[i]!;
+    let j = 0;
+    for (; j < length || carry !== 0; j++) {
+      carry += digits[j]! * 256;
+      digits[j] = carry % 58;
+      carry = (carry / 58) | 0;
+    }
+    length = j;
   }
 
-  // Divmod by 58 to produce base-58 digits, least significant first.
-  let encoded = '';
-  while (n > 0n) {
-    const rem = Number(n % 58n);
-    n /= 58n;
-    encoded = ALPHABET[rem]! + encoded;
-  }
-
-  // Prepend one '1' per leading zero byte.
-  if (zeros > 0) encoded = '1'.repeat(zeros) + encoded;
+  // Prepend one '1' per leading zero byte, then digits most significant first.
+  let encoded = '1'.repeat(zeros);
+  for (let i = length - 1; i >= 0; i--) encoded += ALPHABET[digits[i]!];
   return encoded;
 }
 
@@ -72,28 +75,31 @@ export function decode(str: string): Uint8Array {
   let zeros = 0;
   while (zeros < str.length && str[zeros] === '1') zeros++;
 
-  // Accumulate base58 digits into a BigInt.
-  let n = 0n;
+  // Base conversion into a little-endian byte buffer, validating every char.
+  // log(58)/log(256) ≈ 0.733 bytes per char.
+  const bytes = new Uint8Array(Math.ceil(str.length * 0.733) + 1);
+  let length = 0;
   for (let i = 0; i < str.length; i++) {
     const code = str.charCodeAt(i);
     const v = code < 128 ? DECODE_MAP[code]! : -1;
     if (v < 0) {
       throw new Error(`invalid base58 character '${str[i]}' at index ${i}`);
     }
-    n = n * 58n + BigInt(v);
+    if (i < zeros) continue;
+    let carry = v;
+    let j = 0;
+    for (; j < length || carry !== 0; j++) {
+      carry += bytes[j]! * 58;
+      bytes[j] = carry & 0xff;
+      carry >>= 8;
+    }
+    length = j;
   }
 
-  // Extract big-endian bytes from the BigInt.
-  const bytes: number[] = [];
-  while (n > 0n) {
-    bytes.unshift(Number(n & 0xffn));
-    n >>= 8n;
-  }
-
-  // Compose: `zeros` leading zero bytes, then the big-int-derived bytes.
-  const out = new Uint8Array(zeros + bytes.length);
-  for (let i = 0; i < bytes.length; i++) {
-    out[zeros + i] = bytes[i]!;
+  // Compose: `zeros` leading zero bytes, then the converted bytes big-endian.
+  const out = new Uint8Array(zeros + length);
+  for (let i = 0; i < length; i++) {
+    out[zeros + i] = bytes[length - 1 - i]!;
   }
   return out;
 }

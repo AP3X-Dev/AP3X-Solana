@@ -2,7 +2,7 @@
 // Source: yellowstone-grpc-proto/proto/geyser.proto
 // Commit: 1b0ee391722d765edb2c2bad2b854390bb3f8018
 // Retrieved: 2026-04-19
-// License: AGPL-3.0-or-later (yellowstone-grpc)
+// License: Apache-2.0 (yellowstone-grpc-proto; see pinned package Cargo.toml and LICENSE_APACHE2)
 //
 // Dependency: imports solana-storage.proto (also vendored alongside this file).
 // Do NOT edit by hand — to bump, re-fetch both files from the same pinned commit

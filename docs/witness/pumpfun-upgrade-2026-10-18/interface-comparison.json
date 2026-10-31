@@ -1,0 +1,16 @@
+{
+  "upstreamCommit": "639b87fb45c3adeffa6f7c4a1bf0cb85e392bf22",
+  "pumpBinaryInterfaceUnchanged": true,
+  "pumpSwapByteIdentical": true,
+  "sha256": {
+    "pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+    "pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b"
+  },
+  "newPumpErrors": [
+    {
+      "code": 6109,
+      "name": "QuoteChainAccountsRequired",
+      "msg": "The quote coin is nested: a bonding curve remaining account is required for every coin on its quote chain down to the depth-0 root"
+    }
+  ]
+}

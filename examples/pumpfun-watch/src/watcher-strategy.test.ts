@@ -82,6 +82,23 @@ describe('WatcherStrategy — name', () => {
 });
 
 describe('WatcherStrategy — onSignal', () => {
+  it('writes exact JSON to stdout by default and never proposes a trade', async () => {
+    const stdout = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const strategy = new WatcherStrategy(1);
+      expect(await strategy.onSignal(makeSignal(), ctx)).toBeNull();
+      expect(await strategy.onSignal(makeSignal(), ctx)).toBeNull();
+      expect(stdout).toHaveBeenCalledOnce();
+      expect(JSON.parse(stdout.mock.calls[0]![0] as string)).toMatchObject({
+        signature: 'sig-abc',
+        programId: BC.toBase58(),
+        decoded: { solAmount: '100000000', tokenAmount: '5000000000' },
+      });
+    } finally {
+      stdout.mockRestore();
+    }
+  });
+
   it('returns null for every signal (observer-only)', async () => {
     const emit = vi.fn();
     const s = new WatcherStrategy(undefined, emit);

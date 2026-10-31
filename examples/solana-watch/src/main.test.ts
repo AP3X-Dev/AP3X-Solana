@@ -17,7 +17,7 @@ import { EventEmitter } from 'node:events';
 import { dirname, join, resolve as pathResolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import {
   parseArgs,
@@ -26,6 +26,7 @@ import {
   extractSlot,
   handleUpdate,
   run,
+  main,
   type Args,
   type Io,
   type WatchLine,
@@ -47,6 +48,58 @@ const TOKEN_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const TOKEN_2022_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
 const METAPLEX_ID = 'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s';
 const UNKNOWN_ID = 'VoteKeoQRgPvXeMJX7fN4g3Y1QdBnV51eQJyPvTmWjN';
+
+describe('CLI lifecycle', () => {
+  it('exits with status 2 for invalid arguments and reports the error', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('test exit'); });
+    try {
+      await expect(main([])).rejects.toThrow('test exit');
+      expect(exit).toHaveBeenCalledWith(2);
+      expect(stderr).toHaveBeenCalledWith(expect.stringContaining('solana-watch:'));
+    } finally { stderr.mockRestore(); exit.mockRestore(); }
+  });
+
+  it('prints webhook fixture JSON through the production stdout adapter without signal listeners', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const on = vi.spyOn(process, 'on');
+    try {
+      const fixture = pathResolve(dirname(fileURLToPath(import.meta.url)), '../../../packages/solana-webhooks/tests/fixtures/helius/swap_buy.json');
+      await main(['--webhook', fixture]);
+      expect(stdout).toHaveBeenCalled();
+      const line = stdout.mock.calls[0]![0] as string;
+      expect(line.endsWith('\n')).toBe(true);
+      expect(JSON.parse(line)).toMatchObject({ kind: 'helius-swap' });
+      expect(on.mock.calls.filter(([event]) => event === 'SIGINT' || event === 'SIGTERM')).toEqual([]);
+    } finally { stdout.mockRestore(); on.mockRestore(); }
+  });
+
+  it.each(['SIGINT', 'SIGTERM'] as const)('closes the subscription before exiting on %s', async (signal) => {
+    const handlers = new Map<string, () => void>();
+    const on = vi.spyOn(process, 'on').mockImplementation(((event: string, handler: () => void) => {
+      handlers.set(event, handler);
+      return process;
+    }) as typeof process.on);
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+    let subscription: FakeSubscriptionImpl | undefined;
+    try {
+      await main(['--geyser', 'http://localhost:10000', '--program', TOKEN_ID, '--rpc', 'http://localhost:8899'], {
+        geyserFactory: (() => ({ subscribe: (_req: SubscribeRequest, handler: (update: GeyserUpdate) => void) => {
+          subscription = new FakeSubscriptionImpl(handler);
+          return subscription;
+        } })) as never,
+      });
+      expect(stderr).toHaveBeenCalledWith(expect.stringContaining('RPC endpoint(s) supplied'));
+      expect(exit).not.toHaveBeenCalled();
+      expect(handlers.has(signal)).toBe(true);
+      handlers.get(signal)!();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(subscription!.closedCount).toBe(1);
+      expect(exit).toHaveBeenCalledExactlyOnceWith(0);
+    } finally { on.mockRestore(); stderr.mockRestore(); exit.mockRestore(); }
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Fake GeyserClient — records the subscribe call and exposes a push() hook

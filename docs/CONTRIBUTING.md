@@ -2,6 +2,12 @@
 
 This monorepo houses the `@ap3x/solana-*` substrate and Solana-venue verticals. PRPs in `roadmap/` drive all work; the active PRP is **PRP-01 (Solana substrate)** — see `roadmap/01-solana-substrate.md`.
 
+## Development environment
+
+Use Node.js 20.19+, 22.13+, or 24+ and pnpm 10.14.0; the supported engine range is `^20.19.0 || ^22.13.0 || >=24`. The root development engine requirement matches the current lint and crypto toolchain. Run `pnpm test:architecture` to check that forbidden layer imports are rejected as well as running the package tests.
+
+After `pnpm build`, run `pnpm test:packed`. It installs every public package from tarballs in a fresh temporary consumer, without workspace patches, and checks all public ESM and CommonJS entrypoints, exact transfer details, proto asset loading, Argon2id compatibility and authenticated encryption. It also checks packed MIT/Apache license assets. Private packages stay excluded. Failed runs retain their temporary directory for diagnosis; successful runs remove only their own directory. Set `AP3X_PACK_TEST_STORE` to reuse a specific pnpm store when needed.
+
 ## Ground rules
 
 ### Zero ecosystem dependencies
@@ -18,7 +24,7 @@ No runtime dependency on:
 - `@noble/ed25519` — PDA off-curve check, transaction signing primitive
 - `libsodium-wrappers` — vault encryption (Argon2id + xsalsa20-poly1305)
 
-Adding a new exception requires explicit PRP approval. The CI gate runs `pnpm why @solana/web3.js` (and the other forbidden names) and fails the build on any hit.
+Adding a new exception requires explicit PRP approval. Run `pnpm test:dependencies`: CI inspects the resolved transitive graph of every workspace, including dependency aliases and the entire `@metaplex-foundation/` namespace, and fails on any hit. The command first runs negative controls for nested, aliased and previously unlisted forbidden dependencies.
 
 ### v0 transactions only
 
@@ -46,7 +52,7 @@ If a refactor removes or replaces an existing capability (e.g., direct API suppo
 
 ## Tooling
 
-- **Node:** 20.0.0+ (use `nvm use` if you have an `.nvmrc`)
+- **Node:** `^20.19.0 || ^22.13.0 || >=24` (use `nvm use` if you have an `.nvmrc`)
 - **pnpm:** 10.14.0 (specified in root `package.json` `packageManager` field)
 - **Test:** Vitest + msw (HTTP mocking) + fast-check (property-based)
 - **Lint:** ESLint flat config + `eslint-plugin-boundaries` (enforces package layering — see `eslint.config.js`)
@@ -74,6 +80,8 @@ pnpm diag --check             # CI-mode probes; exits non-zero on failure
 4. On release, run `pnpm version-packages` then `pnpm release`.
 
 ## Vendored proto files
+
+Runtime proto assets must ship with their pinned upstream license text and provenance notice. Both the Jito files and the Yellowstone **protocol package** use Apache-2.0; the latter declares this in `yellowstone-grpc-proto/Cargo.toml` and `LICENSE_APACHE2` at the pinned commit. Do not substitute the Yellowstone repository's root license for that package-specific declaration. Package metadata identifies MIT implementation code and Apache-2.0 protocol assets separately; `tsup` copies their notices alongside the runtime protos.
 
 ### Jito proto files
 

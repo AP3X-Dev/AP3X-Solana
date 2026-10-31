@@ -13,6 +13,8 @@
 // ---------------------------------------------------------------------------
 
 export interface GuardConfig {
+  /** Require resolved accounting even without PnL limits. PnL limits always require it. Default: false. */
+  requireCompleteAccounting?: boolean;
   /** Maximum decisions allowed per rolling 60-second window. Default: 60. */
   maxDecisionsPerMin?: number;
   /**

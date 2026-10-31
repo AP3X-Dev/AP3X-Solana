@@ -51,6 +51,24 @@ With `--check`, the command exits 1 when any probe fails. Usage errors exit 2.
 
 `@grpc/grpc-js` and `@grpc/proto-loader` are allowed exceptions to the zero-ecosystem-deps rule. Yellowstone requires them, and they bring in no Solana SDK. The proto file is vendored under `src/proto/`. `ws` is the third exception: Node 20 has no built-in WebSocket client.
 
+## Licenses
+
+AP3X implementation code is MIT licensed. The vendored Yellowstone protocol definitions are Apache-2.0, as declared by the pinned upstream `yellowstone-grpc-proto` package. Their license text and provenance notice ship in `dist/proto/LICENSE_APACHE2` and `dist/proto/NOTICE.md`.
+
 ## Boundary
+
+Helius full transaction metadata carries optional `innerInstructionsRecorded`:
+`true` means the provider supplied an inner-instruction array, including a
+recorded empty `[]`; `false` means the provider explicitly supplied `null`
+(not recorded). An absent flag means recording presence is unknown. The existing
+`innerInstructions` array remains available for compatibility, but its empty value
+alone proves no recording status. Both supported base64 wire representations
+preserve this distinction. An unsupported metadata value remains unknown.
+
+`GeyserClient` delivers raw Yellowstone `GeyserUpdate` messages rather than
+converting them into `FullTransaction`. Consumers must interpret the protocol's
+`innerInstructionsNone` flag from actual transaction metadata and preserve unknown
+status when that evidence is unavailable. Decoded repeated arrays alone do not
+establish recording presence; the protobuf loader can supply empty defaults.
 
 `solana-connectivity` may import only from `core`.

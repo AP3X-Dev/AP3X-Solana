@@ -12,12 +12,11 @@
  */
 
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Upstream commit of jito-labs/mev-protos that was vendored. */
 export const PINNED_COMMIT = '46ead86a13a55a0ef2c139db96a8ee93bf7505e3';
@@ -35,7 +34,15 @@ export function loadSearcherProto(): {
   SearcherService: grpc.ServiceClientConstructor;
   packageDefinition: protoLoader.PackageDefinition;
 } {
-  const protoDir = __dirname;
+  // Bundling can move this module into dist/index or a shared dist/chunk.
+  // The standalone helper remains in dist/proto; source tests run in src/proto.
+  // node -e can expose caller globals to an imported ESM module. Its own URL
+  // must win; esbuild leaves import.meta.url undefined in CommonJS output.
+  const here = typeof import.meta.url === 'string' ? path.dirname(fileURLToPath(import.meta.url)) : __dirname;
+  const protoDir = [here, path.resolve(here, 'proto'), path.resolve(here, '..', 'proto')]
+    .find(dir => ['searcher.proto', 'bundle.proto', 'packet.proto', 'shared.proto']
+      .every(file => existsSync(path.resolve(dir, file))));
+  if (!protoDir) throw new Error(`Jito proto assets missing beside ${here}`);
 
   const packageDefinition = protoLoader.loadSync(
     [

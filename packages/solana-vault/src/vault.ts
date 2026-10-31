@@ -16,7 +16,7 @@
 
 import { PublicKey } from '@ap3x/solana-core';
 import * as ed from '@noble/ed25519';
-import sodium from 'libsodium-wrappers-sumo';
+import sodium from './sodium';
 
 import { logAudit } from './audit';
 import { decrypt, deriveKey, encrypt, ready } from './crypto';

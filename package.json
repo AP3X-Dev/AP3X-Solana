@@ -4,12 +4,22 @@
   "version": "0.0.0",
   "packageManager": "pnpm@10.14.0",
   "engines": {
-    "node": ">=20.0.0"
+    "node": "^20.19.0 || ^22.13.0 || >=24"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "better-sqlite3"
-    ]
+    ],
+    "overrides": {
+      "vite": "6.4.5",
+      "micromatch@4": "^4.0.8",
+      "brace-expansion@1": "^1.1.21",
+      "brace-expansion@5": "^5.0.12",
+      "js-yaml@3": "^3.15.2",
+      "js-yaml@4": "^4.3.2",
+      "minimatch@10": "^11.0.1",
+      "esbuild": "^0.28.1"
+    }
   },
   "workspaces": [
     "packages/*",
@@ -17,7 +27,7 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "test": "turbo run test",
+    "test": "pnpm test:architecture && turbo run test",
     "test:integration": "turbo run test:integration",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
@@ -30,7 +40,11 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "turbo run build && changeset publish",
-    "capture:pumpfun-instructions": "tsx tests/helpers/capture/capture-pumpfun-instructions.ts"
+    "capture:pumpfun-instructions": "tsx tests/helpers/capture/capture-pumpfun-instructions.ts",
+    "test:architecture": "node --test tests/lint-boundaries.test.mjs",
+    "test:tooling": "node --test tests/capture-module.test.mjs",
+    "test:packed": "node scripts/test-packed.mjs",
+    "test:dependencies": "node --test tests/dependency-policy.test.mjs && node scripts/check-dependencies.mjs"
   },
   "devDependencies": {
     "@ap3x/pumpfun-events": "workspace:*",
@@ -40,16 +54,17 @@
     "@ap3x/solana-spl": "workspace:*",
     "@changesets/cli": "^2.27.7",
     "@types/node": "^20.14.0",
-    "@vitest/coverage-v8": "^2.1.0",
-    "eslint": "^9.10.0",
-    "eslint-plugin-boundaries": "^4.2.2",
+    "@vitest/coverage-v8": "^4.1.12",
+    "eslint": "^10.14.0",
+    "eslint-plugin-boundaries": "^7.4.0",
     "msw": "^2.13.4",
     "prettier": "^3.3.3",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",
-    "turbo": "^2.1.0",
+    "turbo": "^2.9.14",
     "typescript": "^5.6.0",
-    "typescript-eslint": "^8.58.2",
-    "vitest": "^2.1.0"
+    "typescript-eslint": "^8.72.1",
+    "vite": "6.4.5",
+    "vitest": "^4.1.12"
   }
 }
