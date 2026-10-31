@@ -65,6 +65,20 @@ for (const format of ['ESM', 'CommonJS']) {
     ciphertext[0] ^= 1;
     await assert.rejects(() => vault.decrypt(key, nonce, ciphertext));
   });
+  test(`packed ${format}: invocation identity distinguishes unlogged outer instructions and ancestor rollback`, async () => {
+    const { mapInvocationContext } = await load('@ap3x/solana-events');
+    const a = '11111111111111111111111111111111';
+    const b = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+    const c = 'ComputeBudget111111111111111111111111111111';
+    const result = mapInvocationContext({ execution: 'succeeded', innerInstructionsRecorded: true,
+      instructions: [{ programId: c, outerIndex: 0, innerIndex: null, stackHeight: null },
+        { programId: a, outerIndex: 1, innerIndex: null, stackHeight: null },
+        { programId: b, outerIndex: 1, innerIndex: 0, stackHeight: 2 }],
+      logMessages: [`Program ${a} invoke [1]`, `Program ${b} invoke [2]`, `Program ${b} success`,
+        `Program ${a} failed: custom program error: 1`] });
+    assert.equal(result.status, 'mapped');
+    assert.deepEqual(result.invocations.map(i => [i.rootOrdinal, i.outerIndex, i.innerIndex, i.applied]), [[0, 1, null, false], [0, 1, 0, false]]);
+  });
   test(`packed ${format}: unresolved portfolio settlement survives restart and resolves once`, async () => {
     const core = await load('@ap3x/solana-core');
     const { FilePortfolioStore } = await load('@ap3x/solana-portfolio');

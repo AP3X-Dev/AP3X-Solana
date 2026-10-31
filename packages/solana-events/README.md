@@ -45,4 +45,21 @@ for (const { chunk, path } of walkInvocations(log)) {
 
 ## Boundary
 
+`mapInvocationContext` binds a complete runtime log trace to the full RPC outer
+and inner instruction lists. Supply `programId`, `outerIndex`, `innerIndex` and
+nullable `stackHeight` for every instruction, together with `logMessages`,
+`innerInstructionsRecorded` and an explicit `execution` status (`succeeded`,
+`failed` or `unknown`). Do not pass a filtered instruction list.
+
+The result keeps `rootOrdinal` (retained log identity) separate from `outerIndex`
+(RPC identity), retains decoded payload bytes, and reports `applied: false` for
+locally successful children of failed ancestors. Unknown transaction execution
+stays null. Ambiguous matches, missing instruction recording, truncated logs and
+malformed scope evidence return `status: 'unresolved'` with no bound invocations.
+Unsupported trace lines also stay unresolved; recognized `Program log:` messages
+remain free-form and do not create invocation boundaries.
+Unlogged instructions remain in `untracedInstructions`; mapping nearby scopes
+does not establish those instructions' outcomes. Mapping does not decode an event,
+identify a swap leg, establish an owner, or prove whole-transaction/history coverage.
+
 `solana-events` may import only from `core`.
