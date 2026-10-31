@@ -42,6 +42,7 @@
     "release": "turbo run build && changeset publish",
     "capture:pumpfun-instructions": "tsx tests/helpers/capture/capture-pumpfun-instructions.ts",
     "test:architecture": "node --test tests/lint-boundaries.test.mjs",
+    "test:tooling": "node --test tests/capture-module.test.mjs",
     "test:packed": "node scripts/test-packed.mjs",
     "test:dependencies": "node --test tests/dependency-policy.test.mjs && node scripts/check-dependencies.mjs"
   },

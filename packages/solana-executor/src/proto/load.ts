@@ -36,8 +36,9 @@ export function loadSearcherProto(): {
 } {
   // Bundling can move this module into dist/index or a shared dist/chunk.
   // The standalone helper remains in dist/proto; source tests run in src/proto.
-  // Use the CommonJS globals before touching import.meta.url in CJS output.
-  const here = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
+  // node -e can expose caller globals to an imported ESM module. Its own URL
+  // must win; esbuild leaves import.meta.url undefined in CommonJS output.
+  const here = typeof import.meta.url === 'string' ? path.dirname(fileURLToPath(import.meta.url)) : __dirname;
   const protoDir = [here, path.resolve(here, 'proto'), path.resolve(here, '..', 'proto')]
     .find(dir => ['searcher.proto', 'bundle.proto', 'packet.proto', 'shared.proto']
       .every(file => existsSync(path.resolve(dir, file))));

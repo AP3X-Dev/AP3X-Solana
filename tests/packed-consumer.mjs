@@ -3,9 +3,33 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const require = createRequire(import.meta.url);
 const packages = Object.keys(JSON.parse(readFileSync(new URL('./package.json', import.meta.url))).dependencies);
+
+test('packed dynamic ESM imports from CommonJS node -e use their own module paths', () => {
+  const script = `
+    const assert = require('node:assert/strict');
+    (async () => {
+      const helper = await import('./node_modules/@ap3x/solana-executor/dist/proto/load.js');
+      assert.equal(typeof helper.loadSearcherProto().SearcherService, 'function');
+      const geyser = await import('./node_modules/@ap3x/solana-connectivity/dist/index.js');
+      const fs = require('node:fs');
+      const path = require('node:path');
+      const protoDir = geyser.resolveProtoDir();
+      assert.ok(fs.existsSync(path.join(protoDir, 'yellowstone.proto')));
+      const client = geyser.defaultGrpcAdapter.createClient(
+        { url: 'http://127.0.0.1:1', insecure: true }, path.join(protoDir, 'yellowstone.proto'));
+      client.close();
+      const vault = await import('@ap3x/solana-vault');
+      const key = await vault.deriveKey('compatibility-vector', new Uint8Array(16).fill(7), 1, 8192);
+      assert.equal(key.length, 32);
+    })().catch(error => { console.error(error); process.exitCode = 1; });
+  `;
+  const result = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+});
 function exactDecoder(core, spl) {
   const keys = Array.from({ length: 4 }, (_, n) => core.PublicKey.fromBytes(new Uint8Array(32).fill(n + 1)));
   const ix = { programId: spl.SPL_TOKEN_2022_PROGRAM_ID, accounts: keys,

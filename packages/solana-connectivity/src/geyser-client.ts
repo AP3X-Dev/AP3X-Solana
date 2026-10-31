@@ -79,14 +79,12 @@ import type { CheckpointStore, Checkpoint } from './checkpoint-store';
 
 /**
  * CJS-safe shim around `import.meta.url`. In ESM (including tsx) this
- * returns the module URL; in CJS (`__filename` defined) it returns the
- * absolute path. The typeof guard keeps the ESM branch unreachable in
- * CJS, so esbuild's "import.meta is empty in CJS" warning at build time
- * is benign — the branch is dead code in the CJS output.
+ * returns the module URL; in bundled CJS it returns the absolute path.
+ * Prefer the module URL because node -e exposes caller CommonJS globals
+ * even to dynamically imported ESM modules.
  */
 export function resolveCreateRequireBase(): string {
-  if (typeof __filename !== 'undefined') return __filename;
-  return import.meta.url;
+  return typeof import.meta.url === 'string' ? import.meta.url : __filename;
 }
 
 /**
@@ -97,15 +95,8 @@ export function resolveCreateRequireBase(): string {
  * plausible proto file.
  */
 export function resolveProtoDir(): string {
-  let here: string;
-  if (typeof __dirname !== 'undefined') {
-    here = __dirname;
-  } else {
-    // ESM: derive dirname from import.meta.url. Guarded to keep esbuild's
-    // CJS output warning-free (the else branch is never emitted there).
-    const url = resolveCreateRequireBase();
-    here = url.startsWith('file:') ? dirname(fileURLToPath(url)) : dirname(url);
-  }
+  const url = resolveCreateRequireBase();
+  const here = url.startsWith('file:') ? dirname(fileURLToPath(url)) : dirname(url);
 
   // First try `./proto` (dev: src/proto/, dist: dist/proto/). Fall back to
   // walking one level up (useful if the file is bundled flat and the proto/

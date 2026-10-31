@@ -199,7 +199,12 @@ describe.skipIf(!RPC)('pump.fun live simulation', () => {
     if (v2) setup.push(createAssociatedTokenAccountIx(payer, payer, NATIVE_MINT),
       systemTransfer(payer, getAssociatedTokenAddress(NATIVE_MINT, payer, true), 1_000_000n),
       syncNativeIx(getAssociatedTokenAddress(NATIVE_MINT, payer, true)));
-    const amount = 1_000_000n;
+    // Size the exact-output roundtrip from the current reserves. A fixed
+    // million raw units can be worth one lamport on a cheap live coin, so
+    // the sale legitimately rounds to zero and cannot qualify a paid sell.
+    const amount = (10_000n * curve.virtualTokenReserves + curve.virtualSolReserves - 1n) / curve.virtualSolReserves;
+    expect(amount).toBeGreaterThan(0n);
+    expect(amount).toBeLessThan(curve.realTokenReserves);
     const buyIx = (maxSolCost: bigint) => v2
       ? buildBuyV2({ ...modern, amount, maxSolCost }) : buildBuy({ ...legacy, amount, maxSolCost });
     const sellIx = (minSolOutput: bigint) => v2

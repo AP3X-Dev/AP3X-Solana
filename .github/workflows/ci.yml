@@ -46,6 +46,9 @@ jobs:
       - name: Verify architecture rule controls
         run: pnpm test:architecture
 
+      - name: Verify diagnostic entrypoints
+        run: pnpm test:tooling
+
       - name: Lint (package-boundary rules)
         run: pnpm lint
 
