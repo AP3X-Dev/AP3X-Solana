@@ -1,9 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { base58, PublicKey } from '@ap3x/solana-core';
 import { GeyserSignalSource } from './geyser.js';
 
 const programId = PublicKey.fromBase58('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+
+beforeEach(() => { vi.useFakeTimers(); });
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 class FakeGeyserClient extends EventEmitter {
   subscribe = vi.fn((_req, handler) => {
@@ -33,7 +36,7 @@ describe('GeyserSignalSource', () => {
     const got: string[] = [];
     src.on('signal', (s) => got.push(s.signature));
     await src.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await vi.advanceTimersByTimeAsync(30);
     expect(got).toEqual(['sigA']);
     await src.stop();
   });
@@ -71,7 +74,7 @@ describe('GeyserSignalSource', () => {
     src.on('gap', (g) => gaps.push({ fromSlot: g.fromSlot, toSlot: g.toSlot }));
 
     await src.start();
-    await new Promise((r) => setTimeout(r, 50));
+    await vi.advanceTimersByTimeAsync(50);
 
     expect(signals).toEqual(['sigA', 'sigB']);
     expect(gaps).toEqual([{ fromSlot: 101, toSlot: 102 }]);
@@ -90,7 +93,7 @@ describe('GeyserSignalSource', () => {
     src.on('gap', (g) => gaps.push(g));
 
     await src.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await vi.advanceTimersByTimeAsync(30);
 
     expect(gaps).toHaveLength(0);
     await src.stop();
@@ -133,7 +136,7 @@ describe('GeyserSignalSource', () => {
     src.on('error', (e) => errors.push(e));
 
     await src.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await vi.advanceTimersByTimeAsync(30);
     await src.stop();
 
     expect(errors).toHaveLength(1);
@@ -173,7 +176,7 @@ describe('GeyserSignalSource', () => {
     src.on('signal', (s) => signals.push(s));
 
     await src.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await vi.advanceTimersByTimeAsync(30);
     await src.stop();
 
     expect(signals).toHaveLength(0);
@@ -216,7 +219,7 @@ describe('GeyserSignalSource', () => {
     src.on('signal', (s) => got.push({ signature: s.signature, kind: s.kind, slot: s.slot }));
 
     await src.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await vi.advanceTimersByTimeAsync(30);
     await src.stop();
 
     // Signature base58-encoded from the raw bytes; kind is the event's own.
@@ -243,7 +246,7 @@ describe('GeyserSignalSource', () => {
     src.on('signal', (s) => signals.push(s));
 
     await src.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await vi.advanceTimersByTimeAsync(30);
     await src.stop();
 
     expect(signals).toHaveLength(0);
@@ -274,7 +277,7 @@ describe('GeyserSignalSource', () => {
     src.on('signal', (s) => signals.push(s));
 
     await src.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await vi.advanceTimersByTimeAsync(30);
     await src.stop();
 
     expect(signals).toHaveLength(0);
@@ -321,7 +324,7 @@ describe('GeyserSignalSource', () => {
     src.on('signal', (s) => signals.push(s.signature));
 
     await src.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await vi.advanceTimersByTimeAsync(30);
     await src.stop();
 
     // Signal should be emitted; raw chunk is found via child traversal
@@ -353,7 +356,7 @@ describe('GeyserSignalSource', () => {
     src.on('signal', (s) => signals.push(s));
 
     await src.start();
-    await new Promise((r) => setTimeout(r, 30));
+    await vi.advanceTimersByTimeAsync(30);
     await src.stop();
 
     expect(signals).toHaveLength(0);

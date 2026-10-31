@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll } from 'vitest';
-import sodium from 'libsodium-wrappers-sumo';
+import sodium from './sodium';
 
 import { decrypt, deriveKey, encrypt, ready } from './crypto';
 

@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import fc from 'fast-check';
-import sodium from 'libsodium-wrappers-sumo';
+import sodium from './sodium';
 import * as ed from '@noble/ed25519';
 
 import { FileVaultStorage } from './storage-file';
